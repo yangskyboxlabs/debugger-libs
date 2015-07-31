@@ -1188,17 +1188,27 @@ namespace Mono.Debugging.Evaluation
 					proxyType = proxyType.Substring (0, endIndex);
 				}
 			}
-			
-			object ttype = GetType (ctx, proxyType, typeArgs);
+
+			object ttype = null;
+
+			try
+			{
+				ttype = GetType (ctx, proxyType, typeArgs);
+			}
+			catch(Exception)
+			{
+			}
+
 			if (ttype == null) {
 				// the proxy type string might be in the form: "Namespace.TypeName, Assembly...", chop off the ", Assembly..." bit.
 				if ((index = proxyType.IndexOf (',')) != -1)
 					ttype = GetType (ctx, proxyType.Substring (0, index).Trim (), typeArgs);
 			}
-			if (ttype == null)
-				throw new EvaluatorException ("Unknown type '{0}'", data.ProxyType);
 
 			try {
+				if (ttype == null)
+					throw new EvaluatorException ("Unknown type '{0}'", data.ProxyType);
+
 				object val = CreateValue (ctx, ttype, obj);
 				return val ?? obj;
 			} catch (EvaluatorException) {
