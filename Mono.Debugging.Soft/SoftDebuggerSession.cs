@@ -55,6 +55,7 @@ namespace Mono.Debugging.Soft
 		readonly Dictionary<long,ObjectMirror> activeExceptionsByThread = new Dictionary<long, ObjectMirror> ();
 		readonly Dictionary<EventRequest, BreakInfo> breakpoints = new Dictionary<EventRequest, BreakInfo> ();
 		readonly Dictionary<string, MonoSymbolFile> symbolFiles = new Dictionary<string, MonoSymbolFile> ();
+		readonly Dictionary<string, string> symbolFileCopies = new Dictionary<string, string> ();
 		readonly Dictionary<TypeMirror, string[]> type_to_source = new Dictionary<TypeMirror, string[]> ();
 		readonly Dictionary<string, TypeMirror> aliases = new Dictionary<string, TypeMirror> ();
 		readonly Dictionary<string, TypeMirror> types = new Dictionary<string, TypeMirror> ();
@@ -552,6 +553,7 @@ namespace Mono.Debugging.Soft
 				symfile.Value.Dispose ();
 
 			symbolFiles.Clear ();
+			symbolFileCopies.Clear ();
 
 			if (!HasExited) {
 				if (vm != null) {
@@ -1026,7 +1028,10 @@ namespace Mono.Debugging.Soft
 				var bi = (BreakInfo) eventInfo;
 				if (bi.Requests.Count != 0) {
 					foreach (var request in bi.Requests)
+					{
+						breakpoints.Remove (request);
 						request.Enabled = false;
+					}
 
 					RemoveQueuedBreakEvents (bi.Requests);
 				}
@@ -2483,11 +2488,42 @@ namespace Mono.Debugging.Soft
 			int fileId = -1;
 			
 			try {
+
+				string mdbCopyFileName;
+
+				// Make a copy of the .mdb file as Cecil keeps the file open and this causes
+				// issues on Windows if the file is updated while the soft debugger running.
+				if (!symbolFileCopies.TryGetValue(mdbFileName, out mdbCopyFileName))
+				{
+					DebuggerLoggingService.LogMessage("SoftDebuggerSession: Copying " + mdbFileName + " to " + mdbCopyFileName);
+					mdbCopyFileName = Path.GetTempFileName();
+					File.Copy(mdbFileName, mdbCopyFileName, true);
+					symbolFileCopies.Add(mdbFileName, mdbCopyFileName);
+				}
+				else
+				{
+					// Check if .mdb file has been updated and if so, reload it.
+					if (File.GetLastWriteTimeUtc(mdbFileName) > File.GetLastWriteTimeUtc(mdbCopyFileName))
+					{
+						MonoSymbolFile oldMdb;
+
+						if (!symbolFiles.TryGetValue (mdbFileName, out oldMdb))
+						{
+							return false;
+						}
+
+						oldMdb.Dispose(); // Close file handle on currently open .mdb file
+						symbolFiles.Remove(mdbFileName);
+						DebuggerLoggingService.LogMessage("SoftDebuggerSession: Copying updated " + mdbFileName + " to " + mdbCopyFileName);
+						File.Copy(mdbFileName, mdbCopyFileName, true);
+					}
+				}
+
 				if (!symbolFiles.TryGetValue (mdbFileName, out mdb)) {
-					if (!File.Exists (mdbFileName))
+					if (!File.Exists (mdbCopyFileName))
 						return false;
-					
-					mdb = MonoSymbolFile.ReadSymbolFile (mdbFileName);
+
+					mdb = MonoSymbolFile.ReadSymbolFile (mdbCopyFileName);
 					symbolFiles.Add (mdbFileName, mdb);
 				}
 			} catch {
