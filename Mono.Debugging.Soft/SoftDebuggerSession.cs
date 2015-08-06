@@ -2530,7 +2530,7 @@ namespace Mono.Debugging.Soft
 			} 
 			catch (Exception e)
 			{
-				DebuggerLoggingService.LogMessage("SoftDebuggerSession: Exception\n" + e.getString());
+				DebuggerLoggingService.LogMessage("SoftDebuggerSession: Exception\n" + e);
 				return false;
 			}
 
