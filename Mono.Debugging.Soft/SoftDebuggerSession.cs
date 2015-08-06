@@ -2495,8 +2495,8 @@ namespace Mono.Debugging.Soft
 				// issues on Windows if the file is updated while the soft debugger running.
 				if (!symbolFileCopies.TryGetValue(mdbFileName, out mdbCopyFileName))
 				{
-					DebuggerLoggingService.LogMessage("SoftDebuggerSession: Copying " + mdbFileName + " to " + mdbCopyFileName);
 					mdbCopyFileName = Path.GetTempFileName();
+					DebuggerLoggingService.LogMessage("SoftDebuggerSession: Copying " + mdbFileName + " to " + mdbCopyFileName);
 					File.Copy(mdbFileName, mdbCopyFileName, true);
 					symbolFileCopies.Add(mdbFileName, mdbCopyFileName);
 				}
@@ -2509,6 +2509,7 @@ namespace Mono.Debugging.Soft
 
 						if (!symbolFiles.TryGetValue (mdbFileName, out oldMdb))
 						{
+							DebuggerLoggingService.LogMessage("SoftDebuggerSession: Failed to get  " + mdbFileName + " (Copy: " + mdbCopyFileName + ")");
 							return false;
 						}
 
@@ -2526,7 +2527,10 @@ namespace Mono.Debugging.Soft
 					mdb = MonoSymbolFile.ReadSymbolFile (mdbCopyFileName);
 					symbolFiles.Add (mdbFileName, mdb);
 				}
-			} catch {
+			} 
+			catch (Exception e)
+			{
+				DebuggerLoggingService.LogMessage("SoftDebuggerSession: Exception\n" + e.getString());
 				return false;
 			}
 
