@@ -521,7 +521,10 @@ namespace Mono.Debugging.Soft
 		public TypeMirror GetType (string fullName)
 		{
 			TypeMirror tm;
-			TryGetType(fullName, out tm);
+
+			if (!types.TryGetValue (fullName, out tm))
+				aliases.TryGetValue (fullName, out tm);
+
 			return tm;
 		}
 		
@@ -923,7 +926,7 @@ namespace Mono.Debugging.Soft
 					var cp = (Catchpoint) breakEvent;
 					TypeMirror type;
 
-					if (!TryGetType (cp.ExceptionName, out type)) {
+					if (!types.TryGetValue (cp.ExceptionName, out type)) {
 						//
 						// Same as in FindLocationByFile (), fetch types matching the type name
 						if (vm.Version.AtLeast (2, 9)) {
@@ -932,7 +935,7 @@ namespace Mono.Debugging.Soft
 						}
 					}
 
-					if (TryGetType (cp.ExceptionName, out type)) {
+					if (types.TryGetValue (cp.ExceptionName, out type)) {
 						InsertCatchpoint (cp, bi, type);
 						bi.SetStatus (BreakEventStatus.Bound, null);
 					} else {
@@ -1834,7 +1837,7 @@ namespace Mono.Debugging.Soft
 				foreach (string typeName in affectedTypes) {
 					TypeMirror tm;
 
-					if (TryGetType (typeName, out tm)) {
+					if (types.TryGetValue (typeName, out tm)) {
 						if (tm.IsNested)
 							aliases.Remove (NestedTypeNameToAlias (typeName));
 
@@ -1872,7 +1875,7 @@ namespace Mono.Debugging.Soft
 				throw new InvalidOperationException ("Simultaneous TypeLoadEvents for multiple types");
 
 			lock (pending_bes) {
-				if (!ContainsType(type))
+				if (!types.ContainsKey (type.FullName))
 					ResolveBreakpoints (type);
 			}
 		}
@@ -2186,40 +2189,18 @@ namespace Mono.Debugging.Soft
 
 			return prefix + suffix;
 		}
-
-		string TypeKey(TypeMirror type)
-		{
-			return type.Assembly.GetName().Name + ":" + type.FullName;
-		}
-
-		bool ContainsType(TypeMirror type)
-		{
-			string key = TypeKey(type);
-			return types.ContainsKey(key);
-		}
-
-		bool TryGetType(string fullName, out TypeMirror tm)
-		{
-			if (!types.TryGetValue(fullName, out tm))
-				return aliases.TryGetValue(fullName, out tm);
-			else
-				return true;
-		}
-
-		void ProcessType(TypeMirror t)
+		
+		void ProcessType (TypeMirror t)
 		{
 			string typeName = t.FullName;
 
-			if (ContainsType(t))
+			if (types.ContainsKey (typeName))
 				return;
 
 			if (t.IsNested)
 				aliases[NestedTypeNameToAlias (typeName)] = t;
 
-			types[TypeKey(t)] = t;
-
-			// FIXME: There will be a collision if there is a type with the same full name in multiple asssemblies.
-			aliases[typeName] = t;
+			types[typeName] = t;
 
 			//get the source file paths
 			//full paths, from GetSourceFiles (true), are only supported by sdb protocol 2.2 and later
