@@ -524,6 +524,38 @@ namespace Mono.Debugging.Soft
 			if (!types.TryGetValue (fullName, out tm))
 				aliases.TryGetValue (fullName, out tm);
 
+			if (tm == null)
+				return null;
+
+			// Work-around for "ERR_UNLOADED" error when evaluating enums:
+			// mscorlib is never unloaded. Check whether
+			// the TypeMirror for a mscorlib type is from
+			// another domain that has been unloaded.
+			// More details: https://github.com/mono/debugger-libs/issues/57
+
+			string aname = tm.Assembly.GetName().Name;
+
+			if (aname == "mscorlib")
+			{
+				try
+				{
+					tm.GetTypeObject();
+				}
+				catch (CommandException e)
+				{
+					if (e.ErrorCode == ErrorCode.ERR_UNLOADED)
+					{
+						if (tm.IsNested)
+							aliases.Remove(NestedTypeNameToAlias(fullName));
+
+						types.Remove(fullName);
+
+						return null;
+					}
+				}
+
+			}
+
 			return tm;
 		}
 		
