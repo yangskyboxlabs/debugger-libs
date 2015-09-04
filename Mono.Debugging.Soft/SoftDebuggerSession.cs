@@ -1810,6 +1810,11 @@ namespace Mono.Debugging.Soft
 					types.Remove(typeName);
 				}
 			}
+
+			foreach (var pair in source_to_type)
+			{
+				pair.Value.RemoveAll(m => PathComparer.Equals(m.Assembly.Location, asm.Location));
+			}
 		}
 
 		void HandleAppDomainCreateEvents(AppDomainCreateEvent[] events)
@@ -1885,10 +1890,6 @@ namespace Mono.Debugging.Soft
 				}
 
 				RemoveUnloadedAssemblyTypes(asm);
-
-				foreach (var pair in source_to_type) {
-					pair.Value.RemoveAll (m => PathComparer.Equals (m.Assembly.Location, asm.Location));
-				}
 			}
 			OnDebuggerOutput (false, string.Format ("Unloaded assembly: {0}\n", asm.Location));
 		}
