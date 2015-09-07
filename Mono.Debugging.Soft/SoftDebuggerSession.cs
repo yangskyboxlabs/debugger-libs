@@ -1081,7 +1081,13 @@ namespace Mono.Debugging.Soft
 				var bi = (BreakInfo) eventInfo;
 				if (bi.Requests.Count != 0) {
 					foreach (var request in bi.Requests)
-						request.Enabled = enable;
+					{
+						try
+						{
+							request.Enabled = enable;
+						}
+						catch { }
+					}
 
 					if (!enable)
 						RemoveQueuedBreakEvents (bi.Requests);
