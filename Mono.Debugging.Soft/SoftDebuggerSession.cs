@@ -1931,7 +1931,17 @@ namespace Mono.Debugging.Soft
 
 		void HandleThreadDeathEvents (ThreadDeathEvent[] events)
 		{
-			var thread = events [0].Thread;
+			ThreadMirror thread = null;
+			try
+			{
+				thread = events [0].Thread;
+			}
+			catch(ObjectCollectedException) 
+			{
+				// This exception is thrown when trying to retrieve the domain mirror for the thread mirror during domain unload.
+				return;
+			}
+
 			if (events.Length > 1 && events.Any (a => a.Thread != thread))
 				throw new InvalidOperationException ("Simultaneous ThreadDeathEvents for multiple threads");
 
