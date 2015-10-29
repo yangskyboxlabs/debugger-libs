@@ -1082,7 +1082,11 @@ namespace Mono.Debugging.Soft
 				if (bi.Requests.Count != 0) {
 					foreach (var request in bi.Requests)
 					{
-						request.Enabled = enable;
+						try
+						{
+							request.Enabled = enable;
+						}
+						catch { }
 					}
 
 					if (!enable)
@@ -1860,7 +1864,6 @@ namespace Mono.Debugging.Soft
 					int line = breakpoint.Value.Location.LineNumber;
 					OnDebuggerOutput (false, string.Format ("Re-pending breakpoint at {0}:{1}\n", file, line));
 					breakpoints.Remove (breakpoint.Key);
-					breakpoint.Value.Requests.Clear ();
 					pending_bes.Add (breakpoint.Value);
 				}
 
