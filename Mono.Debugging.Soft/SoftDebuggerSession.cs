@@ -1973,7 +1973,6 @@ namespace Mono.Debugging.Soft
 		void HandleThreadDeathEvents (ThreadDeathEvent[] events)
 		{
 			current_threads = null;
-
 			ThreadMirror thread = null;
 			try
 			{
