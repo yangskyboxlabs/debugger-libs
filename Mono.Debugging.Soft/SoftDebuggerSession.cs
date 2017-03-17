@@ -1,4 +1,4 @@
-﻿// 
+// 
 // SoftDebuggerSession.cs
 //  
 // Authors: Lluis Sanchez Gual <lluis@novell.com>
