@@ -9,7 +9,7 @@
     <OutputType>Library</OutputType>
     <RootNamespace>Mono.Debugging</RootNamespace>
     <SignAssembly>True</SignAssembly>
-    <AssemblyOriginatorKeyFile>mono.debugging.snk</AssemblyOriginatorKeyFile>
+    <AssemblyOriginatorKeyFile>..\..\unity.snk</AssemblyOriginatorKeyFile>
     <AssemblyName>Mono.Debugging</AssemblyName>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
