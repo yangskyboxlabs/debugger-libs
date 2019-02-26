@@ -1352,13 +1352,12 @@ namespace Mono.Debugging.Soft
 			if (!started)
 				return locations;
 
-			string filename = Path.GetFileName (file);
-
-			AddFileToSourceMapping (filename);
+			AddFileToSourceMapping (file);
 
 			// Try already loaded types in the current source file
 			List<TypeMirror> mirrors;
 
+			string filename = Path.GetFileName (file);
 			if (source_to_type.TryGetValue (filename, out mirrors)) {
 				foreach (TypeMirror type in mirrors) {
 					bool genericMethod;

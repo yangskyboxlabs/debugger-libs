@@ -12,3 +12,4 @@ packages
 *.mdb
 .DS_Store
 Makefile.in
+.idea
