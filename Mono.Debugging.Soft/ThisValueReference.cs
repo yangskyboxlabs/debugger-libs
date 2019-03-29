@@ -24,56 +24,63 @@
 // THE SOFTWARE.
 
 using System;
-
-using Mono.Debugging.Evaluation;
-using Mono.Debugging.Client;
 using Mono.Debugger.Soft;
-
+using Mono.Debugging.Client;
+using Mono.Debugging.Evaluation;
 using StackFrame = Mono.Debugger.Soft.StackFrame;
 
 namespace Mono.Debugging.Soft
 {
-	public class ThisValueReference : ValueReference
-	{
-		readonly StackFrame frame;
-		object type;
-		Value value;
+    public class ThisValueReference : ValueReference
+    {
+        readonly StackFrame frame;
+        object type;
+        Value value;
 
-		public ThisValueReference (EvaluationContext ctx, StackFrame frame) : base (ctx)
-		{
-			this.frame = frame;
-		}
+        public ThisValueReference(EvaluationContext ctx, StackFrame frame)
+            : base(ctx)
+        {
+            this.frame = frame;
+        }
 
-		public override ObjectValueFlags Flags {
-			get { return ObjectValueFlags.Field | ObjectValueFlags.ReadOnly; }
-		}
+        public override ObjectValueFlags Flags
+        {
+            get { return ObjectValueFlags.Field | ObjectValueFlags.ReadOnly; }
+        }
 
-		public override string Name {
-			get { return "this"; }
-		}
+        public override string Name
+        {
+            get { return "this"; }
+        }
 
-		public override object Value {
-			get {
-				if (value == null)
-					value = frame.GetThis ();
+        public override object Value
+        {
+            get
+            {
+                if (value == null)
+                    value = frame.GetThis();
 
-				return value;
-			}
-			set {
-				if (frame.VirtualMachine.Version.AtLeast (2, 44)) {
-					this.value = (Value)value;
-					frame.SetThis ((Value)value);
-				}
-			}
-		}
+                return value;
+            }
+            set
+            {
+                if (frame.VirtualMachine.Version.AtLeast(2, 44))
+                {
+                    this.value = (Value)value;
+                    frame.SetThis((Value)value);
+                }
+            }
+        }
 
-		public override object Type {
-			get {
-				if (type == null)
-					type = Context.Adapter.GetValueType (Context, Value);
+        public override object Type
+        {
+            get
+            {
+                if (type == null)
+                    type = Context.Adapter.GetValueType(Context, Value);
 
-				return type;
-			}
-		}
-	}
+                return type;
+            }
+        }
+    }
 }

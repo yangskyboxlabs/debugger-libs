@@ -26,13 +26,12 @@
 
 using System;
 using Mono.Debugging.Evaluation;
-using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Client
 {
-	public interface IExpressionEvaluator
-	{
-		ExpressionEvaluator Evaluator { get; }
-		ObjectValue[] GetLocals (StackFrame sf);
-	}
+    public interface IExpressionEvaluator
+    {
+        ExpressionEvaluator Evaluator { get; }
+        ObjectValue[] GetLocals(StackFrame sf);
+    }
 }

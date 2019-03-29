@@ -26,155 +26,157 @@
 //
 
 using System;
-using Mono.Debugging.Client;
 using Mono.Debugging.Backend;
+using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-	public class LiteralValueReference: ValueReference
-	{
-		bool isVoidReturn;
-		bool objLiteral;
-		bool objCreated;
-		object objValue;
-		object value;
-		object type;
-		string name;
+    public class LiteralValueReference : ValueReference
+    {
+        bool isVoidReturn;
+        bool objLiteral;
+        bool objCreated;
+        object objValue;
+        object value;
+        object type;
+        string name;
 
-		LiteralValueReference (EvaluationContext ctx): base (ctx)
-		{
-		}
+        LiteralValueReference(EvaluationContext ctx)
+            : base(ctx) { }
 
-		public static LiteralValueReference CreateTargetBaseObjectLiteral (EvaluationContext ctx, string name, object value)
-		{
-			var val = new LiteralValueReference (ctx);
-			var type = ctx.Adapter.GetValueType (ctx, value);
-			val.name = name;
-			val.value = value;
-			val.type = ctx.Adapter.GetBaseType (ctx, type);
-			val.objCreated = true;
-			return val;
-		}
+        public static LiteralValueReference CreateTargetBaseObjectLiteral(EvaluationContext ctx, string name, object value)
+        {
+            var val = new LiteralValueReference(ctx);
+            var type = ctx.Adapter.GetValueType(ctx, value);
+            val.name = name;
+            val.value = value;
+            val.type = ctx.Adapter.GetBaseType(ctx, type);
+            val.objCreated = true;
+            return val;
+        }
 
-		public static LiteralValueReference CreateTargetObjectLiteral (EvaluationContext ctx, string name, object value, object type = null)
-		{
-			var val = new LiteralValueReference (ctx);
-			val.name = name;
-			val.value = value;
-			val.type = type ?? ctx.Adapter.GetValueType (ctx, value);
-			val.objCreated = true;
-			return val;
-		}
-		
-		public static LiteralValueReference CreateObjectLiteral (EvaluationContext ctx, string name, object value)
-		{
-			var val = new LiteralValueReference (ctx);
-			val.name = name;
-			val.objValue = value;
-			val.objLiteral = true;
-			return val;
-		}
-		
-		public static LiteralValueReference CreateVoidReturnLiteral (EvaluationContext ctx, string name)
-		{
-			var val = new LiteralValueReference (ctx);
-			val.value = val.objValue = new EvaluationResult ("No return value.");
-			val.type = typeof (EvaluationResult);
-			val.isVoidReturn = true;
-			val.objLiteral = true;
-			val.objCreated = true;
-			val.name = name;
-			return val;
-		}
-		
-		void EnsureValueAndType ()
-		{
-			if (!objCreated && objLiteral) {
-				value = Context.Adapter.CreateValue (Context, objValue);
-				type = Context.Adapter.GetValueType (Context, value);
-				objCreated = true;
-			}
-		}
-		
-		public override object ObjectValue {
-			get {
-				return objLiteral ? objValue : base.ObjectValue;
-			}
-		}
+        public static LiteralValueReference CreateTargetObjectLiteral(EvaluationContext ctx, string name, object value, object type = null)
+        {
+            var val = new LiteralValueReference(ctx);
+            val.name = name;
+            val.value = value;
+            val.type = type ?? ctx.Adapter.GetValueType(ctx, value);
+            val.objCreated = true;
+            return val;
+        }
 
-		public override object Value {
-			get {
-				EnsureValueAndType ();
-				return value;
-			}
-			set {
-				throw new NotSupportedException ();
-			}
-		}
-		
-		public override string Name {
-			get {
-				return name;
-			}
-		}
-		
-		public override object Type {
-			get {
-				EnsureValueAndType ();
-				return type;
-			}
-		}
-		
-		public override ObjectValueFlags Flags {
-			get {
-				return ObjectValueFlags.Field | ObjectValueFlags.ReadOnly;
-			}
-		}
+        public static LiteralValueReference CreateObjectLiteral(EvaluationContext ctx, string name, object value)
+        {
+            var val = new LiteralValueReference(ctx);
+            val.name = name;
+            val.objValue = value;
+            val.objLiteral = true;
+            return val;
+        }
 
-		protected override ObjectValue OnCreateObjectValue (EvaluationOptions options)
-		{
-			if (ObjectValue is EvaluationResult) {
-				EvaluationResult exp = (EvaluationResult) ObjectValue;
-				return Mono.Debugging.Client.ObjectValue.CreateObject (this, new ObjectPath (Name), "", exp, Flags, null);
-			}
+        public static LiteralValueReference CreateVoidReturnLiteral(EvaluationContext ctx, string name)
+        {
+            var val = new LiteralValueReference(ctx);
+            val.value = val.objValue = new EvaluationResult("No return value.");
+            val.type = typeof(EvaluationResult);
+            val.isVoidReturn = true;
+            val.objLiteral = true;
+            val.objCreated = true;
+            val.name = name;
+            return val;
+        }
 
-			return base.OnCreateObjectValue (options);
-		}
+        void EnsureValueAndType()
+        {
+            if (!objCreated && objLiteral)
+            {
+                value = Context.Adapter.CreateValue(Context, objValue);
+                type = Context.Adapter.GetValueType(Context, value);
+                objCreated = true;
+            }
+        }
 
-		public override ValueReference GetChild (string name, EvaluationOptions options)
-		{
-			object obj = Value;
-			
-			if (obj == null)
-				return null;
+        public override object ObjectValue
+        {
+            get { return objLiteral ? objValue : base.ObjectValue; }
+        }
 
-			if (name [0] == '[' && Context.Adapter.IsArray (Context, obj)) {
-				// Parse the array indices
-				var tokens = name.Substring (1, name.Length - 2).Split (',');
-				var indices = new int [tokens.Length];
+        public override object Value
+        {
+            get
+            {
+                EnsureValueAndType();
+                return value;
+            }
+            set { throw new NotSupportedException(); }
+        }
 
-				for (int n = 0; n < tokens.Length; n++)
-					indices[n] = int.Parse (tokens[n]);
+        public override string Name
+        {
+            get { return name; }
+        }
 
-				return new ArrayValueReference (Context, obj, indices);
-			}
+        public override object Type
+        {
+            get
+            {
+                EnsureValueAndType();
+                return type;
+            }
+        }
 
-			if (Context.Adapter.IsClassInstance (Context, obj)) {
-				// Note: This is the only difference with the default ValueReference implementation.
-				// We need this because the user may be requesting a base class's implementation, in
-				// which case 'Type' will be the BaseType instead of the actual type of the variable.
-				return Context.Adapter.GetMember (GetChildrenContext (options), this, Type, obj, name);
-			}
+        public override ObjectValueFlags Flags
+        {
+            get { return ObjectValueFlags.Field | ObjectValueFlags.ReadOnly; }
+        }
 
-			return null;
-		}
+        protected override ObjectValue OnCreateObjectValue(EvaluationOptions options)
+        {
+            if (ObjectValue is EvaluationResult)
+            {
+                EvaluationResult exp = (EvaluationResult)ObjectValue;
+                return Mono.Debugging.Client.ObjectValue.CreateObject(this, new ObjectPath(Name), "", exp, Flags, null);
+            }
 
-		public override ObjectValue[] GetChildren (ObjectPath path, int index, int count, EvaluationOptions options)
-		{
-			if (isVoidReturn)
-				return new ObjectValue[0];
+            return base.OnCreateObjectValue(options);
+        }
 
-			return base.GetChildren (path, index, count, options);
-		}
-	}
+        public override ValueReference GetChild(string name, EvaluationOptions options)
+        {
+            object obj = Value;
+
+            if (obj == null)
+                return null;
+
+            if (name[0] == '[' && Context.Adapter.IsArray(Context, obj))
+            {
+                // Parse the array indices
+                var tokens = name.Substring(1, name.Length - 2).Split(',');
+                var indices = new int [tokens.Length];
+
+                for (int n = 0; n < tokens.Length; n++)
+                    indices[n] = int.Parse(tokens[n]);
+
+                return new ArrayValueReference(Context, obj, indices);
+            }
+
+            if (Context.Adapter.IsClassInstance(Context, obj))
+            {
+                // Note: This is the only difference with the default ValueReference implementation.
+                // We need this because the user may be requesting a base class's implementation, in
+                // which case 'Type' will be the BaseType instead of the actual type of the variable.
+                return Context.Adapter.GetMember(GetChildrenContext(options), this, Type, obj, name);
+            }
+
+            return null;
+        }
+
+        public override ObjectValue[] GetChildren(ObjectPath path, int index, int count, EvaluationOptions options)
+        {
+            if (isVoidReturn)
+                return new ObjectValue[0];
+
+            return base.GetChildren(path, index, count, options);
+        }
+    }
 }

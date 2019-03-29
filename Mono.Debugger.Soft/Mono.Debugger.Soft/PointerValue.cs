@@ -24,42 +24,61 @@
 // THE SOFTWARE.
 
 using System;
-using System.Collections.Generic;
 
 namespace Mono.Debugger.Soft
 {
-	/*
-	 * Represents a value of a pointer type in the debuggee
-	 */
-	public class PointerValue : Value {
-		TypeMirror type;
-		long addr;
+    /*
+     * Represents a value of a pointer type in the debuggee
+     */
+    public class PointerValue : Value
+    {
+        TypeMirror type;
+        long addr;
 
-		public PointerValue (VirtualMachine vm, TypeMirror type, long addr) : base (vm, 0) {
-			this.type = type;
-			this.addr = addr;
-		}
+        public PointerValue(VirtualMachine vm, TypeMirror type, long addr)
+            : base(vm, 0)
+        {
+            this.type = type;
+            this.addr = addr;
+        }
 
-		public long Address {
-			get { return addr; }
-		}
+        public long Address
+        {
+            get { return addr; }
+        }
 
-		public TypeMirror Type {
-			get { return type; }
-		}
+        public TypeMirror Type
+        {
+            get { return type; }
+        }
 
-		public override bool Equals (object obj) {
-			if (obj != null && obj is PointerValue)
-				return addr == (obj as PointerValue).addr;
-			return base.Equals (obj);
-		}
+        // Since protocol version 2.46
+        public Value Value
+        {
+            get
+            {
+                if (Address == 0)
+                    return null;
 
-		public override int GetHashCode () {
-			return base.GetHashCode ();
-		}
+                return vm.DecodeValue(vm.conn.Pointer_GetValue(Address, Type));
+            }
+        }
 
-		public override string ToString () {
-			return string.Format ("PointerValue<({0}) 0x{1:x}>", type.CSharpName, addr);
-		}
-	}
+        public override bool Equals(object obj)
+        {
+            if (obj != null && obj is PointerValue)
+                return addr == (obj as PointerValue).addr;
+            return base.Equals(obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return base.GetHashCode();
+        }
+
+        public override string ToString()
+        {
+            return string.Format("PointerValue<({0}) 0x{1:x}>", type.CSharpName, addr);
+        }
+    }
 }

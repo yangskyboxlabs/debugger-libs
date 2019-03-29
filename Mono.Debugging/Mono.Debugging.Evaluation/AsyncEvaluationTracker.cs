@@ -27,122 +27,160 @@
 
 using System;
 using System.Collections.Generic;
-using Mono.Debugging.Client;
 using Mono.Debugging.Backend;
+using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-	public delegate ObjectValue ObjectEvaluatorDelegate ();
-	
-	/// <summary>
-	/// This class can be used to generate an ObjectValue using a provided evaluation delegate.
-	/// The value is initialy evaluated synchronously (blocking the caller). If no result
-	/// is obtained after a short period (provided in the WaitTime property), evaluation
-	/// will then be made asynchronous and the Run method will immediately return an ObjectValue
-	/// with the Evaluating state.
-	/// </summary>
-	public class AsyncEvaluationTracker: RemoteFrameObject, IObjectValueUpdater, IDisposable
-	{
-		Dictionary<string, UpdateCallback> asyncCallbacks = new Dictionary<string, UpdateCallback> ();
-		Dictionary<string, ObjectValue> asyncResults = new Dictionary<string, ObjectValue> ();
-		int asyncCounter = 0;
-		int cancelTimestamp = 0;
-		TimedEvaluator runner = new TimedEvaluator ();
-		
-		public int WaitTime {
-			get { return runner.RunTimeout; }
-			set { runner.RunTimeout = value; }
-		}
-		
-		public bool IsEvaluating {
-			get { return runner.IsEvaluating; }
-		}
+    public delegate ObjectValue ObjectEvaluatorDelegate();
 
-		public ObjectValue Run (string name, ObjectValueFlags flags, ObjectEvaluatorDelegate evaluator)
-		{
-			string id;
-			int tid;
-			lock (asyncCallbacks) {
-				tid = asyncCounter++;
-				id = tid.ToString ();
-			}
-			
-			ObjectValue val = null;
-			bool done = runner.Run (delegate {
-					if (tid >= cancelTimestamp)
-						val = evaluator ();
-			},
-			delegate {
-				if (tid >= cancelTimestamp)
-					OnEvaluationDone (id, val);
-			});
-			
-			if (done) {
-				// 'val' may be null if the timed evaluator is disposed while evaluating
-				return val ?? ObjectValue.CreateUnknown (name);
-			}
+    /// <summary>
+    /// This class can be used to generate an ObjectValue using a provided evaluation delegate.
+    /// The value is initialy evaluated synchronously (blocking the caller). If no result
+    /// is obtained after a short period (provided in the WaitTime property), evaluation
+    /// will then be made asynchronous and the Run method will immediately return an ObjectValue
+    /// with the Evaluating state.
+    /// </summary>
+    public class AsyncEvaluationTracker : RemoteFrameObject, IObjectValueUpdater, IDisposable
+    {
+        Dictionary<string, UpdateCallback> asyncCallbacks = new Dictionary<string, UpdateCallback>();
+        Dictionary<string, ObjectValue> asyncResults = new Dictionary<string, ObjectValue>();
+        int asyncCounter = 0;
+        int cancelTimestamp = 0;
+        TimedEvaluator runner = new TimedEvaluator();
 
-			return ObjectValue.CreateEvaluating (this, new ObjectPath (id, name), flags);
-		}
-		
-		public void Dispose ()
-		{
-			runner.Dispose ();
-		}
+        public int WaitTime
+        {
+            get { return runner.RunTimeout; }
+            set { runner.RunTimeout = value; }
+        }
 
+        public bool IsEvaluating
+        {
+            get { return runner.IsEvaluating; }
+        }
 
-		public void Stop ()
-		{
-			lock (asyncCallbacks) {
-				cancelTimestamp = asyncCounter;
-				runner.CancelAll ();
-				foreach (var cb in asyncCallbacks.Values) {
-					try {
-						cb.UpdateValue (ObjectValue.CreateFatalError ("", "Canceled", ObjectValueFlags.None));
-					} catch {
-					}
-				}
-				asyncCallbacks.Clear ();
-				asyncResults.Clear ();
-			}
-		}
+        internal DebuggerSession Session { get; set; }
 
-		public void WaitForStopped ()
-		{
-			runner.WaitForStopped ();
-		}
+        public ObjectValue Run(string name, ObjectValueFlags flags, ObjectEvaluatorDelegate evaluator)
+        {
+            string id;
+            int tid;
+            lock (asyncCallbacks)
+            {
+                tid = asyncCounter++;
+                id = tid.ToString();
+            }
 
-		void OnEvaluationDone (string id, ObjectValue val)
-		{
-			if (val == null)
-				val = ObjectValue.CreateUnknown (null);
-			UpdateCallback cb = null;
-			lock (asyncCallbacks) {
-				if (asyncCallbacks.TryGetValue (id, out cb)) {
-					try {
-						cb.UpdateValue (val);
-					} catch {}
-					asyncCallbacks.Remove (id);
-				}
-				else
-					asyncResults [id] = val;
-			}
-		}
-		
-		void IObjectValueUpdater.RegisterUpdateCallbacks (UpdateCallback[] callbacks)
-		{
-			foreach (UpdateCallback c in callbacks) {
-				lock (asyncCallbacks) {
-					ObjectValue val;
-					string id = c.Path[0];
-					if (asyncResults.TryGetValue (id, out val)) {
-						c.UpdateValue (val);
-						asyncResults.Remove (id);
-					} else {
-						asyncCallbacks [id] = c;
-					}
-				}
-			}
-		}
-	}
+            ObjectValue val = null;
+            bool done = runner.Run(delegate
+                {
+                    if (tid >= cancelTimestamp)
+                    {
+                        var session = Session;
+                        if (session == null || (flags == ObjectValueFlags.EvaluatingGroup))
+                        {
+                            // Cannot report timing if session is null. If a group is being
+                            // evaluated then individual timings are not possible and must
+                            // be done elsewhere.
+                            val = evaluator();
+                        }
+                        else
+                        {
+                            using (var timer = session.EvaluationStats.StartTimer())
+                            {
+                                val = evaluator();
+                                timer.Stop(val);
+                            }
+                        }
+                    }
+                },
+                delegate
+                {
+                    if (tid >= cancelTimestamp)
+                        OnEvaluationDone(id, val);
+                });
+
+            if (done)
+            {
+                // 'val' may be null if the timed evaluator is disposed while evaluating
+                return val ?? ObjectValue.CreateUnknown(name);
+            }
+
+            return ObjectValue.CreateEvaluating(this, new ObjectPath(id, name), flags);
+        }
+
+        public void Dispose()
+        {
+            runner.Dispose();
+        }
+
+        public void Stop()
+        {
+            lock (asyncCallbacks)
+            {
+                cancelTimestamp = asyncCounter;
+                runner.CancelAll();
+                foreach (var cb in asyncCallbacks.Values)
+                {
+                    try
+                    {
+                        cb.UpdateValue(ObjectValue.CreateFatalError("", "Canceled", ObjectValueFlags.None));
+                    }
+                    catch { }
+                }
+
+                asyncCallbacks.Clear();
+                asyncResults.Clear();
+            }
+        }
+
+        public void WaitForStopped()
+        {
+            runner.WaitForStopped();
+        }
+
+        void OnEvaluationDone(string id, ObjectValue val)
+        {
+            if (val == null)
+                val = ObjectValue.CreateUnknown(null);
+            UpdateCallback cb = null;
+            lock (asyncCallbacks)
+            {
+                if (asyncCallbacks.TryGetValue(id, out cb))
+                {
+                    try
+                    {
+                        cb.UpdateValue(val);
+                    }
+                    catch { }
+
+                    asyncCallbacks.Remove(id);
+                }
+                else
+                    asyncResults[id] = val;
+            }
+        }
+
+        void IObjectValueUpdater.RegisterUpdateCallbacks(UpdateCallback[] callbacks)
+        {
+            foreach (UpdateCallback c in callbacks)
+            {
+                lock (asyncCallbacks)
+                {
+                    ObjectValue val;
+                    string id = c.Path[0];
+                    if (asyncResults.TryGetValue(id, out val))
+                    {
+                        c.UpdateValue(val);
+                        asyncResults.Remove(id);
+                    }
+                    else
+                    {
+                        asyncCallbacks[id] = c;
+                    }
+                }
+            }
+        }
+    }
 }

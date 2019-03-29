@@ -25,220 +25,250 @@
 // THE SOFTWARE.
 
 using System;
-using System.Linq;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
-
-using Mono.Debugging.Client;
 using Mono.Debugging.Backend;
+using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-	public class ExceptionInfoSource
-	{
-		EvaluationContext ctx;
+    public class ExceptionInfoSource
+    {
+        EvaluationContext ctx;
 
-		public ExceptionInfoSource (EvaluationContext ctx, ValueReference exception)
-		{
-			Exception = exception;
-			this.ctx = ctx;
-		}
+        public ExceptionInfoSource(EvaluationContext ctx, ValueReference exception)
+        {
+            Exception = exception;
+            this.ctx = ctx;
+        }
 
-		public ValueReference Exception {
-			get; private set;
-		}
+        public ValueReference Exception { get; private set; }
 
-		public ObjectValue CreateObjectValue (bool withTimeout, EvaluationOptions options)
-		{
-			options = options.Clone ();
-			options.EllipsizeStrings = false;
-			options.AllowTargetInvoke = true;
-			ctx = ctx.WithOptions (options);
-			string type = ctx.Adapter.GetValueTypeName (ctx, Exception.ObjectValue);
+        public ObjectValue CreateObjectValue(bool withTimeout, EvaluationOptions options)
+        {
+            options = options.Clone();
+            options.EllipsizeStrings = false;
+            options.AllowTargetInvoke = true;
+            ctx = ctx.WithOptions(options);
+            string type = ctx.Adapter.GetValueTypeName(ctx, Exception.ObjectValue);
 
-			var excInstance = Exception.CreateObjectValue (withTimeout, options);
-			excInstance.Name = "Instance";
+            var excInstance = Exception.CreateObjectValue(withTimeout, options);
+            excInstance.Name = "Instance";
 
-			ObjectValue messageValue = null;
-			ObjectValue helpLinkValue = null;
-			var exceptionType = ctx.Adapter.GetValueType (ctx, Exception.Value);
+            ObjectValue messageValue = null;
+            ObjectValue helpLinkValue = null;
+            var exceptionType = ctx.Adapter.GetValueType(ctx, Exception.Value);
 
-			// Get the message
+            // Get the message
 
-			if (withTimeout) {
-				messageValue = ctx.Adapter.CreateObjectValueAsync ("Message", ObjectValueFlags.None, delegate {
-					var mref = ctx.Adapter.GetMember (ctx, Exception, exceptionType, Exception.Value, "Message");
-					if (mref != null) {
-						string val = (string)mref.ObjectValue;
-						return ObjectValue.CreatePrimitive (null, new ObjectPath ("Message"), "string", new EvaluationResult (val), ObjectValueFlags.Literal);
-					}
+            if (withTimeout)
+            {
+                messageValue = ctx.Adapter.CreateObjectValueAsync("Message", ObjectValueFlags.None, delegate
+                {
+                    var mref = ctx.Adapter.GetMember(ctx, Exception, exceptionType, Exception.Value, "Message");
+                    if (mref != null)
+                    {
+                        string val = (string)mref.ObjectValue;
+                        return ObjectValue.CreatePrimitive(null, new ObjectPath("Message"), "string", new EvaluationResult(val), ObjectValueFlags.Literal);
+                    }
 
-					return ObjectValue.CreateUnknown ("Message");
-				});
-			} else {
-				var mref = ctx.Adapter.GetMember (ctx, Exception, exceptionType, Exception.Value, "Message");
-				if (mref != null) {
-					string val = (string)mref.ObjectValue;
-					messageValue = ObjectValue.CreatePrimitive (null, new ObjectPath ("Message"), "string", new EvaluationResult (val), ObjectValueFlags.Literal);
-				}
-			}
+                    return ObjectValue.CreateUnknown("Message");
+                });
+            }
+            else
+            {
+                var mref = ctx.Adapter.GetMember(ctx, Exception, exceptionType, Exception.Value, "Message");
+                if (mref != null)
+                {
+                    string val = (string)mref.ObjectValue;
+                    messageValue = ObjectValue.CreatePrimitive(null, new ObjectPath("Message"), "string", new EvaluationResult(val), ObjectValueFlags.Literal);
+                }
+            }
 
-			if (messageValue == null)
-				messageValue = ObjectValue.CreateUnknown ("Message");
+            if (messageValue == null)
+                messageValue = ObjectValue.CreateUnknown("Message");
 
-			messageValue.Name = "Message";
+            messageValue.Name = "Message";
 
-			// Get the help link
+            // Get the help link
 
-			if (withTimeout) {
-				helpLinkValue = ctx.Adapter.CreateObjectValueAsync ("HelpLink", ObjectValueFlags.None, delegate {
-					var mref = ctx.Adapter.GetMember (ctx, Exception, exceptionType, Exception.Value, "HelpLink");
-					if (mref != null) {
-						string val = (string)mref.ObjectValue;
-						return ObjectValue.CreatePrimitive (null, new ObjectPath ("HelpLink"), "string", new EvaluationResult (val), ObjectValueFlags.Literal);
-					}
+            if (withTimeout)
+            {
+                helpLinkValue = ctx.Adapter.CreateObjectValueAsync("HelpLink", ObjectValueFlags.None, delegate
+                {
+                    var mref = ctx.Adapter.GetMember(ctx, Exception, exceptionType, Exception.Value, "HelpLink");
+                    if (mref != null)
+                    {
+                        string val = (string)mref.ObjectValue;
+                        return ObjectValue.CreatePrimitive(null, new ObjectPath("HelpLink"), "string", new EvaluationResult(val), ObjectValueFlags.Literal);
+                    }
 
-					return ObjectValue.CreateUnknown ("HelpLink");
-				});
-			} else {
-				var mref = ctx.Adapter.GetMember (ctx, Exception, exceptionType, Exception.Value, "HelpLink");
-				if (mref != null) {
-					string val = (string)mref.ObjectValue;
-					helpLinkValue = ObjectValue.CreatePrimitive (null, new ObjectPath ("HelpLink"), "string", new EvaluationResult (val), ObjectValueFlags.Literal);
-				}
-			}
+                    return ObjectValue.CreateUnknown("HelpLink");
+                });
+            }
+            else
+            {
+                var mref = ctx.Adapter.GetMember(ctx, Exception, exceptionType, Exception.Value, "HelpLink");
+                if (mref != null)
+                {
+                    string val = (string)mref.ObjectValue;
+                    helpLinkValue = ObjectValue.CreatePrimitive(null, new ObjectPath("HelpLink"), "string", new EvaluationResult(val), ObjectValueFlags.Literal);
+                }
+            }
 
-			if (helpLinkValue == null)
-				helpLinkValue = ObjectValue.CreateUnknown ("HelpLink");
+            if (helpLinkValue == null)
+                helpLinkValue = ObjectValue.CreateUnknown("HelpLink");
 
-			helpLinkValue.Name = "HelpLink";
+            helpLinkValue.Name = "HelpLink";
 
-			// Inner exception
+            // Inner exception
 
-			ObjectValue childExceptionValue = null;
+            ObjectValue childExceptionValue = null;
 
-			if (withTimeout) {
-				childExceptionValue = ctx.Adapter.CreateObjectValueAsync ("InnerException", ObjectValueFlags.None, delegate {
-					var inner = ctx.Adapter.GetMember (ctx, Exception, exceptionType, Exception.Value, "InnerException");
-					if (inner != null && !ctx.Adapter.IsNull (ctx, inner.Value)) {
-						//Console.WriteLine ("pp got child:" + type);
-						var innerSource = new ExceptionInfoSource (ctx, inner);
-						var res = innerSource.CreateObjectValue (false, options);
-						return res;
-					}
+            if (withTimeout)
+            {
+                childExceptionValue = ctx.Adapter.CreateObjectValueAsync("InnerException", ObjectValueFlags.None, delegate
+                {
+                    var inner = ctx.Adapter.GetMember(ctx, Exception, exceptionType, Exception.Value, "InnerException");
+                    if (inner != null && !ctx.Adapter.IsNull(ctx, inner.Value))
+                    {
+                        //Console.WriteLine ("pp got child:" + type);
+                        var innerSource = new ExceptionInfoSource(ctx, inner);
+                        var res = innerSource.CreateObjectValue(false, options);
+                        return res;
+                    }
 
-					return ObjectValue.CreateUnknown ("InnerException");
-				});
-			} else {
-				var inner = ctx.Adapter.GetMember (ctx, Exception, exceptionType, Exception.Value, "InnerException");
-				if (inner != null && !ctx.Adapter.IsNull (ctx, inner.Value)) {
-					//Console.WriteLine ("pp got child:" + type);
-					var innerSource = new ExceptionInfoSource (ctx, inner);
-					childExceptionValue = innerSource.CreateObjectValue (false, options);
-					childExceptionValue.Name = "InnerException";
-				}
-			}
+                    return ObjectValue.CreateUnknown("InnerException");
+                });
+            }
+            else
+            {
+                var inner = ctx.Adapter.GetMember(ctx, Exception, exceptionType, Exception.Value, "InnerException");
+                if (inner != null && !ctx.Adapter.IsNull(ctx, inner.Value))
+                {
+                    //Console.WriteLine ("pp got child:" + type);
+                    var innerSource = new ExceptionInfoSource(ctx, inner);
+                    childExceptionValue = innerSource.CreateObjectValue(false, options);
+                    childExceptionValue.Name = "InnerException";
+                }
+            }
 
-			if (childExceptionValue == null)
-				childExceptionValue = ObjectValue.CreateUnknown ("InnerException");
+            if (childExceptionValue == null)
+                childExceptionValue = ObjectValue.CreateUnknown("InnerException");
 
-			// Inner exceptions in case of AgregatedException
+            // Inner exceptions in case of AgregatedException
 
-			ObjectValue childExceptionsValue = null;
-			ObjectEvaluatorDelegate getInnerExceptionsDelegate = delegate {
-				var inner = ctx.Adapter.GetMember (ctx, Exception, exceptionType, Exception.Value, "InnerExceptions");
-				if (inner != null && !ctx.Adapter.IsNull (ctx, inner.Value)) {
-					var obj = inner.GetValue (ctx);
-					var objType = ctx.Adapter.GetValueType (ctx, obj);
-					var count = (int)ctx.Adapter.GetMember(ctx, null, obj, "Count").ObjectValue;
-					var childrenList = new List<ObjectValue>();
-					for (int i = 0; i < count; i++) {
-						childrenList.Add (new ExceptionInfoSource(ctx, ctx.Adapter.GetIndexerReference(ctx, obj, objType, new object[] { ctx.Adapter.CreateValue(ctx, i) })).CreateObjectValue (withTimeout, ctx.Options));
-					}
-					return ObjectValue.CreateObject (null, new ObjectPath("InnerExceptions"), "", "", ObjectValueFlags.None, childrenList.ToArray ());
-				}
+            ObjectValue childExceptionsValue = null;
+            ObjectEvaluatorDelegate getInnerExceptionsDelegate = delegate
+            {
+                var inner = ctx.Adapter.GetMember(ctx, Exception, exceptionType, Exception.Value, "InnerExceptions");
+                if (inner != null && !ctx.Adapter.IsNull(ctx, inner.Value))
+                {
+                    var obj = inner.GetValue(ctx);
+                    var objType = ctx.Adapter.GetValueType(ctx, obj);
+                    var count = (int)ctx.Adapter.GetMember(ctx, null, obj, "Count").ObjectValue;
+                    var childrenList = new List<ObjectValue>();
+                    for (int i = 0; i < count; i++)
+                    {
+                        childrenList.Add(new ExceptionInfoSource(ctx, ctx.Adapter.GetIndexerReference(ctx, obj, objType, new object[] { ctx.Adapter.CreateValue(ctx, i) })).CreateObjectValue(withTimeout, ctx.Options));
+                    }
 
-				return ObjectValue.CreateUnknown ("InnerExceptions");
-			};
-			if (withTimeout) {
-				childExceptionsValue = ctx.Adapter.CreateObjectValueAsync ("InnerExceptions", ObjectValueFlags.None, getInnerExceptionsDelegate);
-			} else {
-				childExceptionsValue = getInnerExceptionsDelegate ();
-			}
+                    return ObjectValue.CreateObject(null, new ObjectPath("InnerExceptions"), "", "", ObjectValueFlags.None, childrenList.ToArray());
+                }
 
-			if (childExceptionsValue == null)
-				childExceptionsValue = ObjectValue.CreateUnknown ("InnerExceptions");
+                return ObjectValue.CreateUnknown("InnerExceptions");
+            };
+            if (withTimeout)
+            {
+                childExceptionsValue = ctx.Adapter.CreateObjectValueAsync("InnerExceptions", ObjectValueFlags.None, getInnerExceptionsDelegate);
+            }
+            else
+            {
+                childExceptionsValue = getInnerExceptionsDelegate();
+            }
 
-			// Stack trace
+            if (childExceptionsValue == null)
+                childExceptionsValue = ObjectValue.CreateUnknown("InnerExceptions");
 
-			ObjectValue stackTraceValue;
-			if (withTimeout) {
-				stackTraceValue = ctx.Adapter.CreateObjectValueAsync ("StackTrace", ObjectValueFlags.None, delegate {
-					var stackTrace = ctx.Adapter.GetMember (ctx, Exception, exceptionType, Exception.Value, "StackTrace");
-					if (stackTrace == null)
-						return ObjectValue.CreateUnknown ("StackTrace");
-					return GetStackTrace (stackTrace.ObjectValue as string);
-				});
-			} else {
-				var stackTrace = ctx.Adapter.GetMember (ctx, Exception, exceptionType, Exception.Value, "StackTrace");
-				if (stackTrace == null)
-					return ObjectValue.CreateUnknown ("StackTrace");
-				stackTraceValue = GetStackTrace (stackTrace.ObjectValue as string);
-			}
+            // Stack trace
 
-			var children = new ObjectValue [] { excInstance, messageValue, helpLinkValue, stackTraceValue, childExceptionValue, childExceptionsValue };
+            ObjectValue stackTraceValue;
+            if (withTimeout)
+            {
+                stackTraceValue = ctx.Adapter.CreateObjectValueAsync("StackTrace", ObjectValueFlags.None, delegate
+                {
+                    var stackTrace = ctx.Adapter.GetMember(ctx, Exception, exceptionType, Exception.Value, "StackTrace");
+                    if (stackTrace == null)
+                        return ObjectValue.CreateUnknown("StackTrace");
+                    return GetStackTrace(stackTrace.ObjectValue as string);
+                });
+            }
+            else
+            {
+                var stackTrace = ctx.Adapter.GetMember(ctx, Exception, exceptionType, Exception.Value, "StackTrace");
+                if (stackTrace == null)
+                    return ObjectValue.CreateUnknown("StackTrace");
+                stackTraceValue = GetStackTrace(stackTrace.ObjectValue as string);
+            }
 
-			return ObjectValue.CreateObject (null, new ObjectPath ("InnerException"), type, "", ObjectValueFlags.None, children);
-		}
+            var children = new ObjectValue[] { excInstance, messageValue, helpLinkValue, stackTraceValue, childExceptionValue, childExceptionsValue };
 
-		public static ObjectValue GetStackTrace (string trace)
-		{
-			if (trace == null)
-				return ObjectValue.CreateUnknown ("StackTrace");
+            return ObjectValue.CreateObject(null, new ObjectPath("InnerException"), type, "", ObjectValueFlags.None, children);
+        }
 
-			var regex = new Regex ("at (?<MethodName>.*) in (?<FileName>.*):(?<LineNumber>\\d+)(,(?<Column>\\d+))?");
-			var regexLine = new Regex ("at (?<MethodName>.*) in (?<FileName>.*):line (?<LineNumber>\\d+)(,(?<Column>\\d+))?");
-			var frames = new List<ObjectValue> ();
+        public static ObjectValue GetStackTrace(string trace)
+        {
+            if (trace == null)
+                return ObjectValue.CreateUnknown("StackTrace");
 
-			foreach (var sframe in trace.Split ('\n')) {
-				string text = sframe.Trim (' ', '\r', '\t', '"');
-				string file = "";
-				int column = 0;
-				int line = 0;
+            var regex = new Regex("at (?<MethodName>.*) in (?<FileName>.*):(?<LineNumber>\\d+)(,(?<Column>\\d+))?");
+            var regexLine = new Regex("at (?<MethodName>.*) in (?<FileName>.*):line (?<LineNumber>\\d+)(,(?<Column>\\d+))?");
+            var frames = new List<ObjectValue>();
 
-				if (text.Length == 0)
-					continue;
-				//Ignore entries like "--- End of stack trace from previous location where exception was thrown ---"
-				if (text.StartsWith ("---", StringComparison.Ordinal))
-					continue;
+            foreach (var sframe in trace.Split('\n'))
+            {
+                string text = sframe.Trim(' ', '\r', '\t', '"');
+                string file = "";
+                int column = 0;
+                int line = 0;
 
-				var match = regex.Match (text);
-				if (match.Success) {
-					text = match.Groups ["MethodName"].ToString ();
-					file = match.Groups ["FileName"].ToString ();
-					int.TryParse (match.Groups ["LineNumber"].ToString (), out line);
-					int.TryParse (match.Groups ["Column"].ToString (), out column);
-				} else {
-					match = regexLine.Match (text);
-					if (match.Success) {
-						text = match.Groups ["MethodName"].ToString ();
-						file = match.Groups ["FileName"].ToString ();
-						int.TryParse (match.Groups ["LineNumber"].ToString (), out line);
-						int.TryParse (match.Groups ["Column"].ToString (), out column);
-					}
-				}
+                if (text.Length == 0)
+                    continue;
 
-				var fileVal = ObjectValue.CreatePrimitive (null, new ObjectPath ("File"), "", new EvaluationResult (file), ObjectValueFlags.None);
-				var lineVal = ObjectValue.CreatePrimitive (null, new ObjectPath ("Line"), "", new EvaluationResult (line.ToString ()), ObjectValueFlags.None);
-				var colVal = ObjectValue.CreatePrimitive (null, new ObjectPath ("Column"), "", new EvaluationResult (column.ToString ()), ObjectValueFlags.None);
-				var children = new ObjectValue [] { fileVal, lineVal, colVal };
+                //Ignore entries like "--- End of stack trace from previous location where exception was thrown ---"
+                if (text.StartsWith("---", StringComparison.Ordinal))
+                    continue;
 
-				var frame = ObjectValue.CreateObject (null, new ObjectPath (), "", new EvaluationResult (text), ObjectValueFlags.None, children);
-				frames.Add (frame);
-			}
+                var match = regex.Match(text);
+                if (match.Success)
+                {
+                    text = match.Groups["MethodName"].ToString();
+                    file = match.Groups["FileName"].ToString();
+                    int.TryParse(match.Groups["LineNumber"].ToString(), out line);
+                    int.TryParse(match.Groups["Column"].ToString(), out column);
+                }
+                else
+                {
+                    match = regexLine.Match(text);
+                    if (match.Success)
+                    {
+                        text = match.Groups["MethodName"].ToString();
+                        file = match.Groups["FileName"].ToString();
+                        int.TryParse(match.Groups["LineNumber"].ToString(), out line);
+                        int.TryParse(match.Groups["Column"].ToString(), out column);
+                    }
+                }
 
-			return ObjectValue.CreateArray (null, new ObjectPath ("StackTrace"), "", frames.Count, ObjectValueFlags.None, frames.ToArray ());
-		}
-	}
+                var fileVal = ObjectValue.CreatePrimitive(null, new ObjectPath("File"), "", new EvaluationResult(file), ObjectValueFlags.None);
+                var lineVal = ObjectValue.CreatePrimitive(null, new ObjectPath("Line"), "", new EvaluationResult(line.ToString()), ObjectValueFlags.None);
+                var colVal = ObjectValue.CreatePrimitive(null, new ObjectPath("Column"), "", new EvaluationResult(column.ToString()), ObjectValueFlags.None);
+                var children = new ObjectValue[] { fileVal, lineVal, colVal };
+
+                var frame = ObjectValue.CreateObject(null, new ObjectPath(), "", new EvaluationResult(text), ObjectValueFlags.None, children);
+                frames.Add(frame);
+            }
+
+            return ObjectValue.CreateArray(null, new ObjectPath("StackTrace"), "", frames.Count, ObjectValueFlags.None, frames.ToArray());
+        }
+    }
 }
-

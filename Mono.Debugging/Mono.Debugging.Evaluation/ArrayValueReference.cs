@@ -31,52 +31,52 @@ using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-	public class ArrayValueReference: ValueReference
-	{
-		readonly ICollectionAdaptor adaptor;
-		readonly int[] indices;
+    public class ArrayValueReference : ValueReference
+    {
+        readonly ICollectionAdaptor adaptor;
+        readonly int[] indices;
 
-		public ArrayValueReference (EvaluationContext ctx, object arr, int[] indices) : base (ctx)
-		{
-			this.indices = indices;
-			adaptor = ctx.Adapter.CreateArrayAdaptor (ctx, arr);
-		}
+        public ArrayValueReference(EvaluationContext ctx, object arr, int[] indices)
+            : base(ctx)
+        {
+            this.indices = indices;
+            adaptor = ctx.Adapter.CreateArrayAdaptor(ctx, arr);
+        }
 
-		public override object Value {
-			get {
-				return adaptor.GetElement (indices);
-			}
-			set {
-				adaptor.SetElement (indices, value);
-			}
-		}
-		
-		public override string Name {
-			get {
-				var name = new StringBuilder ();
+        public override object Value
+        {
+            get { return adaptor.GetElement(indices); }
+            set { adaptor.SetElement(indices, value); }
+        }
 
-				name.Append ('[');
-				for (int n = 0; n < indices.Length; n++) {
-					if (n > 0)
-						name.Append (", ");
-					name.Append (indices[n]);
-				}
-				name.Append (']');
+        public override string Name
+        {
+            get
+            {
+                var name = new StringBuilder();
 
-				return name.ToString ();
-			}
-		}
-		
-		public override object Type {
-			get {
-				return adaptor.ElementType;
-			}
-		}
-		
-		public override ObjectValueFlags Flags {
-			get {
-				return ObjectValueFlags.ArrayElement;
-			}
-		}
-	}
+                name.Append('[');
+                for (int n = 0; n < indices.Length; n++)
+                {
+                    if (n > 0)
+                        name.Append(", ");
+                    name.Append(indices[n]);
+                }
+
+                name.Append(']');
+
+                return name.ToString();
+            }
+        }
+
+        public override object Type
+        {
+            get { return adaptor.ElementType; }
+        }
+
+        public override ObjectValueFlags Flags
+        {
+            get { return ObjectValueFlags.ArrayElement; }
+        }
+    }
 }

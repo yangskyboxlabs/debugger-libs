@@ -30,39 +30,40 @@ using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Backend
 {
-	[Serializable]
-	public class UpdateCallback
-	{
-		ObjectPath path;
-		IObjectValueUpdateCallback callback;
+    [Serializable]
+    public class UpdateCallback
+    {
+        ObjectPath path;
+        IObjectValueUpdateCallback callback;
 
-		internal UpdateCallback ()
-		{
-		}
+        internal UpdateCallback() { }
 
-		internal UpdateCallback (IObjectValueUpdateCallback callback, ObjectPath path)
-		{
-			this.callback = callback;
-			this.path = path;
-		}
+        internal UpdateCallback(IObjectValueUpdateCallback callback, ObjectPath path)
+        {
+            this.callback = callback;
+            this.path = path;
+        }
 
-		public ObjectPath Path {
-			get { return path; }
-		}
+        public ObjectPath Path
+        {
+            get { return path; }
+        }
 
-		internal IObjectValueUpdateCallback Callback {
-			get {
-				return callback;
-			}
-		}
+        internal IObjectValueUpdateCallback Callback
+        {
+            get { return callback; }
+        }
 
-		public void UpdateValue (ObjectValue newValue)
-		{
-			try {
-				callback.UpdateValue (newValue);
-			} catch {
-				// Ignore
-			}
-		}
-	}
+        public void UpdateValue(ObjectValue newValue)
+        {
+            try
+            {
+                callback.UpdateValue(newValue);
+            }
+            catch
+            {
+                // Ignore
+            }
+        }
+    }
 }

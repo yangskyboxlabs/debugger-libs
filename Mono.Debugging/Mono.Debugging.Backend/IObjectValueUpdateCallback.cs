@@ -30,8 +30,8 @@ using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Backend
 {
-	internal interface IObjectValueUpdateCallback
-	{
-		void UpdateValue (ObjectValue newValue);
-	}
+    internal interface IObjectValueUpdateCallback
+    {
+        void UpdateValue(ObjectValue newValue);
+    }
 }

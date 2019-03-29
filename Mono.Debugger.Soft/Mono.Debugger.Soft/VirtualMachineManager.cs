@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
@@ -9,336 +8,380 @@ using System.Text;
 
 namespace Mono.Debugger.Soft
 {
-	public class LaunchOptions {
-		public string AgentArgs {
-			get; set;
-		}
+    public class LaunchOptions
+    {
+        public string AgentArgs { get; set; }
 
-		public bool Valgrind {
-			get; set;
-		}
-		
-		public ProcessLauncher CustomProcessLauncher {
-			get; set;
-		}
+        public bool Valgrind { get; set; }
 
-		public TargetProcessLauncher CustomTargetProcessLauncher {
-			get; set;
-		}
+        public ProcessLauncher CustomProcessLauncher { get; set; }
 
-		public delegate Process ProcessLauncher (ProcessStartInfo info);
-		public delegate ITargetProcess TargetProcessLauncher (ProcessStartInfo info);
-	}
+        public TargetProcessLauncher CustomTargetProcessLauncher { get; set; }
 
-	public class VirtualMachineManager
-	{
-		private delegate VirtualMachine LaunchCallback (ITargetProcess p, ProcessStartInfo info, Socket socket, TextWriter logWriter);
-		private delegate VirtualMachine ListenCallback (Socket dbg_sock, Socket con_sock, TextWriter logWriter); 
-		private delegate VirtualMachine ConnectCallback (Socket dbg_sock, Socket con_sock, IPEndPoint dbg_ep, IPEndPoint con_ep, TextWriter logWriter); 
+        public delegate Process ProcessLauncher(ProcessStartInfo info);
 
-		internal VirtualMachineManager () {
-		}
+        public delegate ITargetProcess TargetProcessLauncher(ProcessStartInfo info);
+    }
 
-		public static VirtualMachine LaunchInternal (Process p, ProcessStartInfo info, Socket socket, TextWriter logWriter = null)
-		{
-			return LaunchInternal (new ProcessWrapper (p), info, socket, logWriter);
-		}
-			
-		public static VirtualMachine LaunchInternal (ITargetProcess p, ProcessStartInfo info, Socket socket, TextWriter logWriter = null) {
-			Socket accepted = null;
-			try {
-				accepted = socket.Accept ();
-			} catch (Exception) {
-				throw;
-			}
+    public class VirtualMachineManager
+    {
+        private delegate VirtualMachine LaunchCallback(ITargetProcess p, ProcessStartInfo info, Socket socket, TextWriter logWriter);
 
-			Connection conn = new TcpConnection (accepted, logWriter);
+        private delegate VirtualMachine ListenCallback(Socket dbg_sock, Socket con_sock, TextWriter logWriter);
 
-			VirtualMachine vm = new VirtualMachine (p, conn);
+        private delegate VirtualMachine ConnectCallback(Socket dbg_sock, Socket con_sock, IPEndPoint dbg_ep, IPEndPoint con_ep, TextWriter logWriter);
 
-			if (info.RedirectStandardOutput)
-				vm.StandardOutput = p.StandardOutput;
-			
-			if (info.RedirectStandardError)
-				vm.StandardError = p.StandardError;
+        internal VirtualMachineManager() { }
 
-			conn.EventHandler = new EventHandler (vm);
+        public static VirtualMachine LaunchInternal(Process p, ProcessStartInfo info, Socket socket, TextWriter logWriter = null)
+        {
+            return LaunchInternal(new ProcessWrapper(p), info, socket, logWriter);
+        }
 
-			vm.connect ();
+        public static VirtualMachine LaunchInternal(ITargetProcess p, ProcessStartInfo info, Socket socket, TextWriter logWriter = null)
+        {
+            Socket accepted = null;
+            try
+            {
+                accepted = socket.Accept();
+            }
+            catch (Exception)
+            {
+                throw;
+            }
 
-			return vm;
-		}
+            Connection conn = new TcpConnection(accepted, logWriter);
 
-		public static IAsyncResult BeginLaunch (ProcessStartInfo info, AsyncCallback callback, TextWriter logWriter = null)
-		{
-			return BeginLaunch (info, callback, null, logWriter);
-		}
+            VirtualMachine vm = new VirtualMachine(p, conn);
 
-		public static IAsyncResult BeginLaunch (ProcessStartInfo info, AsyncCallback callback, LaunchOptions options, TextWriter logWriter = null)
-		{
-			if (info == null)
-				throw new ArgumentNullException ("info");
+            if (info.RedirectStandardOutput)
+                vm.StandardOutput = p.StandardOutput;
 
-			Socket socket = new Socket (AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-			socket.Bind (new IPEndPoint (IPAddress.Loopback, 0));
-			socket.Listen (1000);
-			IPEndPoint ep = (IPEndPoint) socket.LocalEndPoint;
+            if (info.RedirectStandardError)
+                vm.StandardError = p.StandardError;
 
-			// We need to inject our arguments into the psi
-			info.Arguments = string.Format ("{0} --debug --debugger-agent=transport=dt_socket,address={1}:{2}{3} {4}", 
-								options == null || !options.Valgrind ? "" : info.FileName,
-								ep.Address,
-								ep.Port,
-								options == null || options.AgentArgs == null ? "" : "," + options.AgentArgs,
-								info.Arguments);
+            conn.EventHandler = new EventHandler(vm);
 
-			if (options != null && options.Valgrind)
-				info.FileName = "valgrind";
-			info.UseShellExecute = false;
+            vm.connect();
 
-			info.StandardErrorEncoding = Encoding.UTF8;
-			info.StandardOutputEncoding = Encoding.UTF8;
+            return vm;
+        }
 
-			ITargetProcess p;
-			if (options != null && options.CustomProcessLauncher != null)
-				p = new ProcessWrapper (options.CustomProcessLauncher (info));
-			else if (options != null && options.CustomTargetProcessLauncher != null)
-				p = options.CustomTargetProcessLauncher (info);
-			else
-				p = new ProcessWrapper (Process.Start (info));
-			
-			p.Exited += delegate (object sender, EventArgs eargs) {
-				socket.Close ();
-			};
+        public static IAsyncResult BeginLaunch(ProcessStartInfo info, AsyncCallback callback, TextWriter logWriter = null)
+        {
+            return BeginLaunch(info, callback, null, logWriter);
+        }
 
-			LaunchCallback c = new LaunchCallback (LaunchInternal);
-			return c.BeginInvoke (p, info, socket, logWriter, callback, socket);
-		}
+        public static IAsyncResult BeginLaunch(ProcessStartInfo info, AsyncCallback callback, LaunchOptions options, TextWriter logWriter = null)
+        {
+            if (info == null)
+                throw new ArgumentNullException("info");
 
-		public static VirtualMachine EndLaunch (IAsyncResult asyncResult) {
-			if (asyncResult == null)
-				throw new ArgumentNullException ("asyncResult");
+            Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+            socket.Listen(1000);
+            IPEndPoint ep = (IPEndPoint)socket.LocalEndPoint;
 
-			if (!asyncResult.IsCompleted)
-				asyncResult.AsyncWaitHandle.WaitOne ();
+            // We need to inject our arguments into the psi
+            info.Arguments = string.Format("{0} --debug --debugger-agent=transport=dt_socket,address={1}:{2}{3} {4}",
+                options == null || !options.Valgrind ? "" : info.FileName,
+                ep.Address,
+                ep.Port,
+                options == null || options.AgentArgs == null ? "" : "," + options.AgentArgs,
+                info.Arguments);
 
-			AsyncResult result = (AsyncResult) asyncResult;
-			LaunchCallback cb = (LaunchCallback) result.AsyncDelegate;
-			return cb.EndInvoke (asyncResult);
-		}
+            if (options != null && options.Valgrind)
+                info.FileName = "valgrind";
+            info.UseShellExecute = false;
 
-		public static VirtualMachine Launch (ProcessStartInfo info, TextWriter logWriter = null)
-		{
-			return Launch (info, null, logWriter);
-		}
+            if (info.RedirectStandardError)
+                info.StandardErrorEncoding = Encoding.UTF8;
 
-		public static VirtualMachine Launch (ProcessStartInfo info, LaunchOptions options, TextWriter logWriter = null)
-		{
-			return EndLaunch (BeginLaunch (info, null, options, logWriter));
-		}
+            if (info.RedirectStandardOutput)
+                info.StandardOutputEncoding = Encoding.UTF8;
 
-		public static VirtualMachine Launch (string[] args, TextWriter logWriter = null)
-		{
-			return Launch (args, null, logWriter);
-		}
+            ITargetProcess p;
+            if (options != null && options.CustomProcessLauncher != null)
+                p = new ProcessWrapper(options.CustomProcessLauncher(info));
+            else if (options != null && options.CustomTargetProcessLauncher != null)
+                p = options.CustomTargetProcessLauncher(info);
+            else
+                p = new ProcessWrapper(Process.Start(info));
 
-		public static VirtualMachine Launch (string[] args, LaunchOptions options, TextWriter logWriter = null)
-		{
-			ProcessStartInfo pi = new ProcessStartInfo ("mono");
-			pi.Arguments = String.Join (" ", args);
+            p.Exited += delegate(object sender, EventArgs eargs)
+            {
+                socket.Close();
+            };
 
-			return Launch (pi, options, logWriter);
-		}
-			
-		public static VirtualMachine ListenInternal (Socket dbg_sock, Socket con_sock, TextWriter logWriter = null) {
-			Socket con_acc = null;
-			Socket dbg_acc = null;
+            LaunchCallback c = new LaunchCallback(LaunchInternal);
+            return c.BeginInvoke(p, info, socket, logWriter, callback, socket);
+        }
 
-			if (con_sock != null) {
-				try {
-					con_acc = con_sock.Accept ();
-				} catch (Exception) {
-					try {
-						dbg_sock.Close ();
-					} catch {}
-					throw;
-				}
-			}
-						
-			try {
-				dbg_acc = dbg_sock.Accept ();
-			} catch (Exception) {
-				if (con_sock != null) {
-					try {
-						con_sock.Close ();
-						con_acc.Close ();
-					} catch {}
-				}
-				throw;
-			}
+        public static VirtualMachine EndLaunch(IAsyncResult asyncResult)
+        {
+            if (asyncResult == null)
+                throw new ArgumentNullException("asyncResult");
 
-			if (con_sock != null) {
-				if (con_sock.Connected)
-					con_sock.Disconnect (false);
-				con_sock.Close ();
-			}
+            if (!asyncResult.IsCompleted)
+                asyncResult.AsyncWaitHandle.WaitOne();
 
-			if (dbg_sock.Connected)
-				dbg_sock.Disconnect (false);
-			dbg_sock.Close ();
+            AsyncResult result = (AsyncResult)asyncResult;
+            LaunchCallback cb = (LaunchCallback)result.AsyncDelegate;
+            return cb.EndInvoke(asyncResult);
+        }
 
-			Connection transport = new TcpConnection (dbg_acc, logWriter);
-			StreamReader console = con_acc != null? new StreamReader (new NetworkStream (con_acc)) : null;
-			
-			return Connect (transport, console, null);
-		}
+        public static VirtualMachine Launch(ProcessStartInfo info, TextWriter logWriter = null)
+        {
+            return Launch(info, null, logWriter);
+        }
 
-		public static IAsyncResult BeginListen (IPEndPoint dbg_ep, AsyncCallback callback, TextWriter logWriter = null) {
-			return BeginListen (dbg_ep, null, callback, logWriter);
-		}
-		
-		public static IAsyncResult BeginListen (IPEndPoint dbg_ep, IPEndPoint con_ep, AsyncCallback callback, TextWriter logWriter = null)
-		{
-			int dbg_port, con_port;
-			return BeginListen (dbg_ep, con_ep, callback, out dbg_port, out con_port, logWriter);
-		}
+        public static VirtualMachine Launch(ProcessStartInfo info, LaunchOptions options, TextWriter logWriter = null)
+        {
+            return EndLaunch(BeginLaunch(info, null, options, logWriter));
+        }
 
-		public static IAsyncResult BeginListen (IPEndPoint dbg_ep, IPEndPoint con_ep, AsyncCallback callback,
-			out int dbg_port, out int con_port, TextWriter logWriter = null)
-		{
-			dbg_port = con_port = 0;
-			
-			Socket dbg_sock = null;
-			Socket con_sock = null;
+        public static VirtualMachine Launch(string[] args, TextWriter logWriter = null)
+        {
+            return Launch(args, null, logWriter);
+        }
 
-			dbg_sock = new Socket (AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-			dbg_sock.Bind (dbg_ep);
-			dbg_sock.Listen (1000);
-			dbg_port = ((IPEndPoint) dbg_sock.LocalEndPoint).Port;
+        public static VirtualMachine Launch(string[] args, LaunchOptions options, TextWriter logWriter = null)
+        {
+            ProcessStartInfo pi = new ProcessStartInfo("mono");
+            pi.Arguments = String.Join(" ", args);
 
-			if (con_ep != null) {
-				con_sock = new Socket (AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-				con_sock.Bind (con_ep);
-				con_sock.Listen (1000);
-				con_port = ((IPEndPoint) con_sock.LocalEndPoint).Port;
-			}
-			
-			ListenCallback c = new ListenCallback (ListenInternal);
-			return c.BeginInvoke (dbg_sock, con_sock, logWriter, callback, con_sock ?? dbg_sock);
-		}
+            return Launch(pi, options, logWriter);
+        }
 
-		public static VirtualMachine EndListen (IAsyncResult asyncResult) {
-			if (asyncResult == null)
-				throw new ArgumentNullException ("asyncResult");
+        public static VirtualMachine ListenInternal(Socket dbg_sock, Socket con_sock, TextWriter logWriter = null)
+        {
+            Socket con_acc = null;
+            Socket dbg_acc = null;
 
-			if (!asyncResult.IsCompleted)
-				asyncResult.AsyncWaitHandle.WaitOne ();
+            if (con_sock != null)
+            {
+                try
+                {
+                    con_acc = con_sock.Accept();
+                }
+                catch (Exception)
+                {
+                    try
+                    {
+                        dbg_sock.Close();
+                    }
+                    catch { }
 
-			AsyncResult result = (AsyncResult) asyncResult;
-			ListenCallback cb = (ListenCallback) result.AsyncDelegate;
-			return cb.EndInvoke (asyncResult);
-		}
+                    throw;
+                }
+            }
 
-		public static VirtualMachine Listen (IPEndPoint dbg_ep, TextWriter logWriter = null)
-		{
-			return Listen (dbg_ep, null, logWriter);
-		}
+            try
+            {
+                dbg_acc = dbg_sock.Accept();
+            }
+            catch (Exception)
+            {
+                if (con_sock != null)
+                {
+                    try
+                    {
+                        con_sock.Close();
+                        con_acc.Close();
+                    }
+                    catch { }
+                }
 
-		public static VirtualMachine Listen (IPEndPoint dbg_ep, IPEndPoint con_ep, TextWriter logWriter = null)
-		{
-			return EndListen (BeginListen (dbg_ep, con_ep, null, logWriter));
-		}
+                throw;
+            }
 
-		/*
-		 * Connect to a virtual machine listening at the specified address.
-		 */
-		public static VirtualMachine Connect (IPEndPoint endpoint, TextWriter logWriter = null) {
-			return Connect (endpoint, null, logWriter);
-		}
+            if (con_sock != null)
+            {
+                if (con_sock.Connected)
+                    con_sock.Disconnect(false);
+                con_sock.Close();
+            }
 
-		public static VirtualMachine Connect (IPEndPoint endpoint, IPEndPoint consoleEndpoint, TextWriter logWriter = null) { 
-			if (endpoint == null)
-				throw new ArgumentNullException ("endpoint");
+            if (dbg_sock.Connected)
+                dbg_sock.Disconnect(false);
+            dbg_sock.Close();
 
-			return EndConnect (BeginConnect (endpoint, consoleEndpoint, null, logWriter));
-		}
+            Connection transport = new TcpConnection(dbg_acc, logWriter);
+            StreamReader console = con_acc != null ? new StreamReader(new NetworkStream(con_acc)) : null;
 
-		public static VirtualMachine ConnectInternal (Socket dbg_sock, Socket con_sock, IPEndPoint dbg_ep, IPEndPoint con_ep, TextWriter logWriter = null) {
-			if (con_sock != null) {
-				try {
-					con_sock.Connect (con_ep);
-				} catch (Exception) {
-					try {
-						dbg_sock.Close ();
-					} catch { }
-					throw;
-				}
-			}
+            return Connect(transport, console, null);
+        }
 
-			try {
-				dbg_sock.Connect (dbg_ep);
-			} catch (Exception) {
-				if (con_sock != null) {
-					try {
-						con_sock.Close ();
-					} catch { }
-				}
-				throw;
-			}
+        public static IAsyncResult BeginListen(IPEndPoint dbg_ep, AsyncCallback callback, TextWriter logWriter = null)
+        {
+            return BeginListen(dbg_ep, null, callback, logWriter);
+        }
 
-			Connection transport = new TcpConnection (dbg_sock, logWriter);
-			StreamReader console = con_sock != null ? new StreamReader (new NetworkStream (con_sock)) : null;
+        public static IAsyncResult BeginListen(IPEndPoint dbg_ep, IPEndPoint con_ep, AsyncCallback callback, TextWriter logWriter = null)
+        {
+            int dbg_port, con_port;
+            return BeginListen(dbg_ep, con_ep, callback, out dbg_port, out con_port, logWriter);
+        }
 
-			return Connect (transport, console, null);
-		}
+        public static IAsyncResult BeginListen(IPEndPoint dbg_ep, IPEndPoint con_ep, AsyncCallback callback,
+            out int dbg_port, out int con_port, TextWriter logWriter = null)
+        {
+            dbg_port = con_port = 0;
 
-		public static IAsyncResult BeginConnect (IPEndPoint dbg_ep, AsyncCallback callback, TextWriter logWriter = null) {
-			return BeginConnect (dbg_ep, null, callback, logWriter);
-		}
+            Socket dbg_sock = null;
+            Socket con_sock = null;
 
-		public static IAsyncResult BeginConnect (IPEndPoint dbg_ep, IPEndPoint con_ep, AsyncCallback callback, TextWriter logWriter = null) {
-			Socket dbg_sock = null;
-			Socket con_sock = null;
+            dbg_sock = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            dbg_sock.Bind(dbg_ep);
+            dbg_sock.Listen(1000);
+            dbg_port = ((IPEndPoint)dbg_sock.LocalEndPoint).Port;
 
-			dbg_sock = new Socket (AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            if (con_ep != null)
+            {
+                con_sock = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                con_sock.Bind(con_ep);
+                con_sock.Listen(1000);
+                con_port = ((IPEndPoint)con_sock.LocalEndPoint).Port;
+            }
 
-			if (con_ep != null) {
-				con_sock = new Socket (AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-			}
-			
-			ConnectCallback c = new ConnectCallback (ConnectInternal);
-			return c.BeginInvoke (dbg_sock, con_sock, dbg_ep, con_ep, logWriter, callback, con_sock ?? dbg_sock);
-		}
+            ListenCallback c = new ListenCallback(ListenInternal);
+            return c.BeginInvoke(dbg_sock, con_sock, logWriter, callback, con_sock ?? dbg_sock);
+        }
 
-		public static VirtualMachine EndConnect (IAsyncResult asyncResult) {
-			if (asyncResult == null)
-				throw new ArgumentNullException ("asyncResult");
+        public static VirtualMachine EndListen(IAsyncResult asyncResult)
+        {
+            if (asyncResult == null)
+                throw new ArgumentNullException("asyncResult");
 
-			if (!asyncResult.IsCompleted)
-				asyncResult.AsyncWaitHandle.WaitOne ();
+            if (!asyncResult.IsCompleted)
+                asyncResult.AsyncWaitHandle.WaitOne();
 
-			AsyncResult result = (AsyncResult) asyncResult;
-			ConnectCallback cb = (ConnectCallback) result.AsyncDelegate;
-			return cb.EndInvoke (asyncResult);
-		}
+            AsyncResult result = (AsyncResult)asyncResult;
+            ListenCallback cb = (ListenCallback)result.AsyncDelegate;
+            return cb.EndInvoke(asyncResult);
+        }
 
-		public static void CancelConnection (IAsyncResult asyncResult)
-		{
-			((Socket)asyncResult.AsyncState).Close ();
-		}
-		
-		public static VirtualMachine Connect (Connection transport, StreamReader standardOutput, StreamReader standardError)
-		{
-			VirtualMachine vm = new VirtualMachine (null, transport);
-			
-			vm.StandardOutput = standardOutput;
-			vm.StandardError = standardError;
-			
-			transport.EventHandler = new EventHandler (vm);
+        public static VirtualMachine Listen(IPEndPoint dbg_ep, TextWriter logWriter = null)
+        {
+            return Listen(dbg_ep, null, logWriter);
+        }
 
-			vm.connect ();
+        public static VirtualMachine Listen(IPEndPoint dbg_ep, IPEndPoint con_ep, TextWriter logWriter = null)
+        {
+            return EndListen(BeginListen(dbg_ep, con_ep, null, logWriter));
+        }
 
-			return vm;
-		}
-	}
+        /*
+         * Connect to a virtual machine listening at the specified address.
+         */
+        public static VirtualMachine Connect(IPEndPoint endpoint, TextWriter logWriter = null)
+        {
+            return Connect(endpoint, null, logWriter);
+        }
+
+        public static VirtualMachine Connect(IPEndPoint endpoint, IPEndPoint consoleEndpoint, TextWriter logWriter = null)
+        {
+            if (endpoint == null)
+                throw new ArgumentNullException("endpoint");
+
+            return EndConnect(BeginConnect(endpoint, consoleEndpoint, null, logWriter));
+        }
+
+        public static VirtualMachine ConnectInternal(Socket dbg_sock, Socket con_sock, IPEndPoint dbg_ep, IPEndPoint con_ep, TextWriter logWriter = null)
+        {
+            if (con_sock != null)
+            {
+                try
+                {
+                    con_sock.Connect(con_ep);
+                }
+                catch (Exception)
+                {
+                    try
+                    {
+                        dbg_sock.Close();
+                    }
+                    catch { }
+
+                    throw;
+                }
+            }
+
+            try
+            {
+                dbg_sock.Connect(dbg_ep);
+            }
+            catch (Exception)
+            {
+                if (con_sock != null)
+                {
+                    try
+                    {
+                        con_sock.Close();
+                    }
+                    catch { }
+                }
+
+                throw;
+            }
+
+            Connection transport = new TcpConnection(dbg_sock, logWriter);
+            StreamReader console = con_sock != null ? new StreamReader(new NetworkStream(con_sock)) : null;
+
+            return Connect(transport, console, null);
+        }
+
+        public static IAsyncResult BeginConnect(IPEndPoint dbg_ep, AsyncCallback callback, TextWriter logWriter = null)
+        {
+            return BeginConnect(dbg_ep, null, callback, logWriter);
+        }
+
+        public static IAsyncResult BeginConnect(IPEndPoint dbg_ep, IPEndPoint con_ep, AsyncCallback callback, TextWriter logWriter = null)
+        {
+            Socket dbg_sock = null;
+            Socket con_sock = null;
+
+            dbg_sock = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+
+            if (con_ep != null)
+            {
+                con_sock = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            }
+
+            ConnectCallback c = new ConnectCallback(ConnectInternal);
+            return c.BeginInvoke(dbg_sock, con_sock, dbg_ep, con_ep, logWriter, callback, con_sock ?? dbg_sock);
+        }
+
+        public static VirtualMachine EndConnect(IAsyncResult asyncResult)
+        {
+            if (asyncResult == null)
+                throw new ArgumentNullException("asyncResult");
+
+            if (!asyncResult.IsCompleted)
+                asyncResult.AsyncWaitHandle.WaitOne();
+
+            AsyncResult result = (AsyncResult)asyncResult;
+            ConnectCallback cb = (ConnectCallback)result.AsyncDelegate;
+            return cb.EndInvoke(asyncResult);
+        }
+
+        public static void CancelConnection(IAsyncResult asyncResult)
+        {
+            ((Socket)asyncResult.AsyncState).Close();
+        }
+
+        public static VirtualMachine Connect(Connection transport, StreamReader standardOutput, StreamReader standardError)
+        {
+            VirtualMachine vm = new VirtualMachine(null, transport);
+
+            vm.StandardOutput = standardOutput;
+            vm.StandardError = standardError;
+
+            transport.EventHandler = new EventHandler(vm);
+
+            vm.connect();
+
+            return vm;
+        }
+    }
 }

@@ -30,292 +30,339 @@ using System.Text;
 
 namespace Mono.Debugging.Client
 {
-	[Serializable]
-	public class ExceptionInfo
-	{
-		ObjectValue exception;
-		ObjectValue messageObject;
+    [Serializable]
+    public class ExceptionInfo
+    {
+        ObjectValue exception;
+        ObjectValue messageObject;
 
-		[NonSerialized]
-		ExceptionStackFrame[] frames;
-		
-		[NonSerialized]
-		ExceptionInfo innerException;
+        [NonSerialized]
+        ExceptionStackFrame[] frames;
 
-		[NonSerialized]
-		ObjectValue instance;
-		
-		/// <summary>
-		/// The provided value can have the following members:
-		/// Type of the object: type of the exception
-		/// Message: Message of the exception
-		/// Instance: Raw instance of the exception
-		/// StackTrace: an array of frames. Each frame must have:
-		///     Value of the object: display text of the frame
-		///     File: name of the file
-		///     Line: line
-		///     Column: column
-		/// InnerException: inner exception, following the same format described above.
-		/// </summary>
-		public ExceptionInfo (ObjectValue exception)
-		{
-			this.exception = exception;
-			if (exception.IsEvaluating || exception.IsEvaluatingGroup)
-				exception.ValueChanged += HandleExceptionValueChanged;
-		}
+        [NonSerialized]
+        ExceptionInfo innerException;
 
-		void LoadMessage ()
-		{
-			if (messageObject == null) {
-				messageObject = exception.GetChild ("Message");
-				if (messageObject != null && messageObject.IsEvaluating)
-					messageObject.ValueChanged += HandleMessageValueChanged;
-			}
-		}
+        [NonSerialized]
+        ObjectValue instance;
 
-		void HandleMessageValueChanged (object sender, EventArgs e)
-		{
-			frames = null;
-			NotifyChanged ();
-		}
+        /// <summary>
+        /// The provided value can have the following members:
+        /// Type of the object: type of the exception
+        /// Message: Message of the exception
+        /// Instance: Raw instance of the exception
+        /// StackTrace: an array of frames. Each frame must have:
+        ///     Value of the object: display text of the frame
+        ///     File: name of the file
+        ///     Line: line
+        ///     Column: column
+        /// InnerException: inner exception, following the same format described above.
+        /// </summary>
+        public ExceptionInfo(ObjectValue exception)
+        {
+            this.exception = exception;
+            if (exception.IsEvaluating || exception.IsEvaluatingGroup)
+                exception.ValueChanged += HandleExceptionValueChanged;
+        }
 
-		void HandleExceptionValueChanged (object sender, EventArgs e)
-		{
-			frames = null;
-			if (exception.IsEvaluatingGroup)
-				exception = exception.GetArrayItem (0);
-			LoadMessage ();
-			NotifyChanged ();
-		}
+        void LoadMessage()
+        {
+            if (messageObject == null)
+            {
+                messageObject = exception.GetChild("Message");
+                if (messageObject != null && messageObject.IsEvaluating)
+                    messageObject.ValueChanged += HandleMessageValueChanged;
+            }
+        }
 
-		void NotifyChanged ()
-		{
-			EventHandler evnt = Changed;
-			if (evnt != null)
-				evnt (this, EventArgs.Empty);
-		}
-		
-		public string Type {
-			get { return exception.TypeName; }
-		}
+        void HandleMessageValueChanged(object sender, EventArgs e)
+        {
+            frames = null;
+            NotifyChanged();
+        }
 
-		public string Message {
-			get {
-				LoadMessage ();
-				if (messageObject != null && messageObject.IsEvaluating)
-					return "Loading...";
-				return messageObject != null ? messageObject.Value : null;
-			}
-		}
+        void HandleExceptionValueChanged(object sender, EventArgs e)
+        {
+            frames = null;
+            if (exception.IsEvaluatingGroup)
+                exception = exception.GetArrayItem(0);
+            LoadMessage();
+            NotifyChanged();
+        }
 
-		ObjectValue helpLinkObject;
-		public string HelpLink {
-			get {
-				if (helpLinkObject == null) {
-					helpLinkObject = exception.GetChild ("HelpLink");
-					if (helpLinkObject != null && helpLinkObject.IsEvaluating) {
-						helpLinkObject.ValueChanged += delegate {
-							NotifyChanged ();
-						};
-					}
-				}
-				return helpLinkObject != null ? helpLinkObject.Value : null;
-			}
-		}
+        void NotifyChanged()
+        {
+            EventHandler evnt = Changed;
+            if (evnt != null)
+                evnt(this, EventArgs.Empty);
+        }
 
-		public ObjectValue Instance {
-			get {
-				if (instance == null)
-					instance = exception.GetChild ("Instance");
-				if (instance == null)
-					return exception;
-				return instance;
-			}
-		}
-		
-		public bool IsEvaluating {
-			get { return exception.IsEvaluating || exception.IsEvaluatingGroup; }
-		}
+        public string Type
+        {
+            get { return exception.TypeName; }
+        }
 
-		public bool StackIsEvaluating {
-			get {
-				ObjectValue stackTrace = exception.GetChild ("StackTrace");
-				if (stackTrace != null)
-					return stackTrace.IsEvaluating;
+        public string Message
+        {
+            get
+            {
+                LoadMessage();
+                if (messageObject != null && messageObject.IsEvaluating)
+                    return "Loading...";
+                return messageObject != null ? messageObject.Value : null;
+            }
+        }
 
-				return false;
-			}
-		}
+        ObjectValue helpLinkObject;
 
-		public ExceptionStackFrame[] StackTrace {
-			get {
-				if (frames != null)
-					return frames;
-				
-				var stackTrace = exception.GetChild ("StackTrace");
-				if (stackTrace == null || stackTrace.IsNull)
-					return frames = new ExceptionStackFrame [0];
-				
-				if (stackTrace.IsEvaluating) {
-					frames = new ExceptionStackFrame [0];
-					stackTrace.ValueChanged += HandleExceptionValueChanged;
-					return frames;
-				}
+        public string HelpLink
+        {
+            get
+            {
+                if (helpLinkObject == null)
+                {
+                    helpLinkObject = exception.GetChild("HelpLink");
+                    if (helpLinkObject != null && helpLinkObject.IsEvaluating)
+                    {
+                        helpLinkObject.ValueChanged += delegate
+                        {
+                            NotifyChanged();
+                        };
+                    }
+                }
 
-				if (stackTrace.TypeName == "string") {
-					stackTrace = Debugging.Evaluation.ExceptionInfoSource.GetStackTrace (stackTrace.Value);
-				}
+                return helpLinkObject != null ? helpLinkObject.Value : null;
+            }
+        }
 
-				if (!stackTrace.IsArray) {
-					return frames = new ExceptionStackFrame [0];
-				}
+        public ObjectValue Instance
+        {
+            get
+            {
+                if (instance == null)
+                    instance = exception.GetChild("Instance");
+                if (instance == null)
+                    return exception;
+                return instance;
+            }
+        }
 
-				var list = new List<ExceptionStackFrame> ();
-				for (int i = 0; i < stackTrace.ArrayCount; i++)
-					list.Add (new ExceptionStackFrame (stackTrace.GetArrayItem (i, EvaluationOptions.DefaultOptions)));
+        public bool IsEvaluating
+        {
+            get { return exception.IsEvaluating || exception.IsEvaluatingGroup; }
+        }
 
-				frames = list.ToArray ();
+        public bool StackIsEvaluating
+        {
+            get
+            {
+                ObjectValue stackTrace = exception.GetChild("StackTrace");
+                if (stackTrace != null)
+                    return stackTrace.IsEvaluating;
 
-				return frames;
-			}
-		}
-		
-		public ExceptionInfo InnerException {
-			get {
-				if (innerException == null) {
-					ObjectValue innerVal = exception.GetChild ("InnerException");
-					if (innerVal == null || innerVal.IsNull || innerVal.IsError || innerVal.IsUnknown)
-						return null;
-					if (innerVal.IsEvaluating) {
-						innerVal.ValueChanged += delegate { NotifyChanged (); };
-						return null;
-					}
-					innerException = new ExceptionInfo (innerVal);
-					innerException.Changed += delegate {
-						NotifyChanged ();
-					};
-				}
-				return innerException;
-			}
-		}
+                return false;
+            }
+        }
 
-		List<ExceptionInfo> innerExceptions;
-		public List<ExceptionInfo> InnerExceptions {
-			get {
-				if (innerExceptions == null) {
-					ObjectValue innerVal = exception.GetChild ("InnerExceptions");
-					if (innerVal == null || innerVal.IsError || innerVal.IsUnknown)
-						return null;
-					if (innerVal.IsEvaluating) {
-						innerVal.ValueChanged += delegate { NotifyChanged (); };
-						return null;
-					}
-					innerExceptions = new List<ExceptionInfo> ();
-					foreach (var inner in innerVal.GetAllChildren ()) {
-						var innerObj = new ExceptionInfo (inner);
-						innerObj.Changed += delegate {
-							NotifyChanged ();
-						};
-						innerExceptions.Add (innerObj);
-					}
-				}
-				return innerExceptions;
-			}
-		}
-		
-		public event EventHandler Changed;
-		
-		internal void ConnectCallback (StackFrame parentFrame)
-		{
-			ObjectValue.ConnectCallbacks (parentFrame, exception);
-		}
+        public ExceptionStackFrame[] StackTrace
+        {
+            get
+            {
+                if (frames != null)
+                    return frames;
 
-		public override string ToString ()
-		{
-			StringBuilder sb = new StringBuilder ();
-			var chain = new List<ExceptionInfo> ();
-			ExceptionInfo e = this;
+                var stackTrace = exception.GetChild("StackTrace");
+                if (stackTrace == null || stackTrace.IsNull)
+                    return frames = new ExceptionStackFrame [0];
 
-			while (e != null) {
-				chain.Insert (0, e);
-				if (sb.Length > 0)
-					sb.Append (" ---> ");
-				sb.Append (e.Type).Append (": ").Append (e.Message);
-				e = e.InnerException;
-			}
+                if (stackTrace.IsEvaluating)
+                {
+                    frames = new ExceptionStackFrame [0];
+                    stackTrace.ValueChanged += HandleExceptionValueChanged;
+                    return frames;
+                }
 
-			sb.AppendLine ();
+                if (stackTrace.TypeName == "string")
+                {
+                    stackTrace = Debugging.Evaluation.ExceptionInfoSource.GetStackTrace(stackTrace.Value);
+                }
 
-			foreach (var ex in chain) {
-				if (ex != chain[0])
-					sb.AppendLine ("  --- End of inner exception stack trace ---");
+                if (!stackTrace.IsArray)
+                {
+                    return frames = new ExceptionStackFrame [0];
+                }
 
-				foreach (var frame in ex.StackTrace) {
-					sb.Append ("  at ").Append (frame.DisplayText);
+                var list = new List<ExceptionStackFrame>();
+                for (int i = 0; i < stackTrace.ArrayCount; i++)
+                    list.Add(new ExceptionStackFrame(stackTrace.GetArrayItem(i, EvaluationOptions.DefaultOptions)));
 
-					if (!string.IsNullOrEmpty (frame.File)) {
-						sb.Append (" in ").Append (frame.File).Append (':').Append (frame.Line);
-						if (frame.Column != 0)
-							sb.Append (',').Append (frame.Column);
-					}
+                frames = list.ToArray();
 
-					sb.AppendLine ();
-				}
-			}
+                return frames;
+            }
+        }
 
-			return sb.ToString ();
-		}
-	}
-	
-	public class ExceptionStackFrame
-	{
-		readonly ObjectValue frame;
-		
-		/// <summary>
-		/// The provided value must have a specific structure.
-		/// The Value property is the display text.
-		/// A child "File" member must be the name of the file.
-		/// A child "Line" member must be the line.
-		/// A child "Column" member must be the column.
-		/// </summary>
-		public ExceptionStackFrame (ObjectValue value)
-		{
-			frame = value;
-		}
+        public ExceptionInfo InnerException
+        {
+            get
+            {
+                if (innerException == null)
+                {
+                    ObjectValue innerVal = exception.GetChild("InnerException");
+                    if (innerVal == null || innerVal.IsNull || innerVal.IsError || innerVal.IsUnknown)
+                        return null;
+                    if (innerVal.IsEvaluating)
+                    {
+                        innerVal.ValueChanged += delegate { NotifyChanged(); };
+                        return null;
+                    }
 
-		public string File {
-			get {
-				ObjectValue file = frame.GetChild ("File", EvaluationOptions.DefaultOptions);
-				if (file != null)
-					return file.Value;
+                    innerException = new ExceptionInfo(innerVal);
+                    innerException.Changed += delegate
+                    {
+                        NotifyChanged();
+                    };
+                }
 
-				return null;
-			}
-		}
+                return innerException;
+            }
+        }
 
-		public int Line {
-			get {
-				ObjectValue val = frame.GetChild ("Line", EvaluationOptions.DefaultOptions);
-				if (val != null)
-					return int.Parse (val.Value);
+        List<ExceptionInfo> innerExceptions;
 
-				return 0;
-			}
-		}
+        public List<ExceptionInfo> InnerExceptions
+        {
+            get
+            {
+                if (innerExceptions == null)
+                {
+                    ObjectValue innerVal = exception.GetChild("InnerExceptions");
+                    if (innerVal == null || innerVal.IsError || innerVal.IsUnknown)
+                        return null;
+                    if (innerVal.IsEvaluating)
+                    {
+                        innerVal.ValueChanged += delegate { NotifyChanged(); };
+                        return null;
+                    }
 
-		public int Column {
-			get {
-				ObjectValue val = frame.GetChild ("Column", EvaluationOptions.DefaultOptions);
-				if (val != null)
-					return int.Parse (val.Value);
+                    innerExceptions = new List<ExceptionInfo>();
+                    foreach (var inner in innerVal.GetAllChildren())
+                    {
+                        var innerObj = new ExceptionInfo(inner);
+                        innerObj.Changed += delegate
+                        {
+                            NotifyChanged();
+                        };
+                        innerExceptions.Add(innerObj);
+                    }
+                }
 
-				return 0;
-			}
-		}
+                return innerExceptions;
+            }
+        }
 
-		public string DisplayText {
-			get { return frame.Value; }
-		}
-	}
+        public event EventHandler Changed;
+
+        internal void ConnectCallback(StackFrame parentFrame)
+        {
+            ObjectValue.ConnectCallbacks(parentFrame, exception);
+        }
+
+        public override string ToString()
+        {
+            StringBuilder sb = new StringBuilder();
+            var chain = new List<ExceptionInfo>();
+            ExceptionInfo e = this;
+
+            while (e != null)
+            {
+                chain.Insert(0, e);
+                if (sb.Length > 0)
+                    sb.Append(" ---> ");
+                sb.Append(e.Type).Append(": ").Append(e.Message);
+                e = e.InnerException;
+            }
+
+            sb.AppendLine();
+
+            foreach (var ex in chain)
+            {
+                if (ex != chain[0])
+                    sb.AppendLine("  --- End of inner exception stack trace ---");
+
+                foreach (var frame in ex.StackTrace)
+                {
+                    sb.Append("  at ").Append(frame.DisplayText);
+
+                    if (!string.IsNullOrEmpty(frame.File))
+                    {
+                        sb.Append(" in ").Append(frame.File).Append(':').Append(frame.Line);
+                        if (frame.Column != 0)
+                            sb.Append(',').Append(frame.Column);
+                    }
+
+                    sb.AppendLine();
+                }
+            }
+
+            return sb.ToString();
+        }
+    }
+
+    public class ExceptionStackFrame
+    {
+        readonly ObjectValue frame;
+
+        /// <summary>
+        /// The provided value must have a specific structure.
+        /// The Value property is the display text.
+        /// A child "File" member must be the name of the file.
+        /// A child "Line" member must be the line.
+        /// A child "Column" member must be the column.
+        /// </summary>
+        public ExceptionStackFrame(ObjectValue value)
+        {
+            frame = value;
+        }
+
+        public string File
+        {
+            get
+            {
+                ObjectValue file = frame.GetChild("File", EvaluationOptions.DefaultOptions);
+                if (file != null)
+                    return file.Value;
+
+                return null;
+            }
+        }
+
+        public int Line
+        {
+            get
+            {
+                ObjectValue val = frame.GetChild("Line", EvaluationOptions.DefaultOptions);
+                if (val != null)
+                    return int.Parse(val.Value);
+
+                return 0;
+            }
+        }
+
+        public int Column
+        {
+            get
+            {
+                ObjectValue val = frame.GetChild("Column", EvaluationOptions.DefaultOptions);
+                if (val != null)
+                    return int.Parse(val.Value);
+
+                return 0;
+            }
+        }
+
+        public string DisplayText
+        {
+            get { return frame.Value; }
+        }
+    }
 }
-

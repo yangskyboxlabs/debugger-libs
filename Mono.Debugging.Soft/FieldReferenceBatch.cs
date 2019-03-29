@@ -23,44 +23,48 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-using Mono.Debugger.Soft;
+using System;
 using System.Collections.Generic;
+using Mono.Debugger.Soft;
 
 namespace Mono.Debugging.Soft
 {
-	public class FieldReferenceBatch
-	{
-		readonly object locker = new object ();
-		readonly object obj;
-		List<FieldInfoMirror> fields = new List<FieldInfoMirror> ();
-		object[] results;
+    public class FieldReferenceBatch
+    {
+        readonly object locker = new object();
+        readonly object obj;
+        List<FieldInfoMirror> fields = new List<FieldInfoMirror>();
+        object[] results;
 
-		public FieldReferenceBatch (object obj)
-		{
-			this.obj = obj;
-		}
+        public FieldReferenceBatch(object obj)
+        {
+            this.obj = obj;
+        }
 
-		public void Add (FieldInfoMirror fieldVal)
-		{
-			lock (locker) {
-				fields.Add (fieldVal);
-			}
-		}
+        public void Add(FieldInfoMirror fieldVal)
+        {
+            lock (locker)
+            {
+                fields.Add(fieldVal);
+            }
+        }
 
-		public object GetValue (FieldInfoMirror field)
-		{
-			lock (locker) {
-				if (results == null || fields.Count != results.Length)
-					results = ((ObjectMirror)obj).GetValues (fields);
-				return results [fields.IndexOf (field)];
-			}
-		}
+        public object GetValue(FieldInfoMirror field)
+        {
+            lock (locker)
+            {
+                if (results == null || fields.Count != results.Length)
+                    results = ((ObjectMirror)obj).GetValues(fields);
+                return results[fields.IndexOf(field)];
+            }
+        }
 
-		public void Invalidate ()
-		{
-			lock (locker) {
-				results = null;
-			}
-		}
-	}
+        public void Invalidate()
+        {
+            lock (locker)
+            {
+                results = null;
+            }
+        }
+    }
 }

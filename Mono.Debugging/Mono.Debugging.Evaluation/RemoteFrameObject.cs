@@ -30,47 +30,52 @@ using System.Collections.Generic;
 
 namespace Mono.Debugging.Evaluation
 {
-	public class RemoteFrameObject: MarshalByRefObject
-	{
-		static List<RemoteFrameObject> connectedValues = new List<RemoteFrameObject> ();
+    public class RemoteFrameObject : MarshalByRefObject
+    {
+        static List<RemoteFrameObject> connectedValues = new List<RemoteFrameObject>();
 
-		public static bool TrackConnections { get; set; }
+        public static bool TrackConnections { get; set; }
 
-		bool connected;
-		
-		public void Connect ()
-		{
-			if (!TrackConnections)
-				return;
+        bool connected;
 
-			// Registers the value reference. Once a remote reference of this object
-			// is created, it will never be released, until DisconnectAll is called,
-			// which is done every time the current backtrace changes
-			
-			lock (connectedValues) {
-				if (!connected) {
-					connectedValues.Add (this);
-					connected = true;
-				}
-			}
-		}
-		
-		public static void DisconnectAll ()
-		{
-			lock (connectedValues) {
-				foreach (RemoteFrameObject val in connectedValues) {
-					System.Runtime.Remoting.RemotingServices.Disconnect (val);
-					IDisposable disp = val as IDisposable;
-					if (disp != null)
-						disp.Dispose ();
-				}
-				connectedValues.Clear ();
-			}
-		}
-		
-		public override object InitializeLifetimeService ()
-		{
-			return null;
-		}
-	}
+        public void Connect()
+        {
+            if (!TrackConnections)
+                return;
+
+            // Registers the value reference. Once a remote reference of this object
+            // is created, it will never be released, until DisconnectAll is called,
+            // which is done every time the current backtrace changes
+
+            lock (connectedValues)
+            {
+                if (!connected)
+                {
+                    connectedValues.Add(this);
+                    connected = true;
+                }
+            }
+        }
+
+        public static void DisconnectAll()
+        {
+            lock (connectedValues)
+            {
+                foreach (RemoteFrameObject val in connectedValues)
+                {
+                    System.Runtime.Remoting.RemotingServices.Disconnect(val);
+                    IDisposable disp = val as IDisposable;
+                    if (disp != null)
+                        disp.Dispose();
+                }
+
+                connectedValues.Clear();
+            }
+        }
+
+        public override object InitializeLifetimeService()
+        {
+            return null;
+        }
+    }
 }

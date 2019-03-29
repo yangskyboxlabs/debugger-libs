@@ -24,145 +24,150 @@
 // THE SOFTWARE.
 
 using System;
-using System.Text;
 using System.Collections.Generic;
-
+using System.Text;
 using ICSharpCode.NRefactory.CSharp;
-
 using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-	// FIXME: if we passed the DebuggerSession and SourceLocation into the NRefactoryExpressionEvaluatorVisitor,
-	// we wouldn't need to do this resolve step.
-	public class NRefactoryExpressionResolverVisitor : DepthFirstAstVisitor
-	{
-		readonly List<Replacement> replacements = new List<Replacement> ();
-		readonly SourceLocation location;
-		readonly DebuggerSession session;
-		readonly string expression;
-		string parentType;
+    // FIXME: if we passed the DebuggerSession and SourceLocation into the NRefactoryExpressionEvaluatorVisitor,
+    // we wouldn't need to do this resolve step.
+    public class NRefactoryExpressionResolverVisitor : DepthFirstAstVisitor
+    {
+        readonly List<Replacement> replacements = new List<Replacement>();
+        readonly SourceLocation location;
+        readonly DebuggerSession session;
+        readonly string expression;
+        string parentType;
 
-		class Replacement
-		{
-			public string NewText;
-			public int Offset;
-			public int Length;
-		}
+        class Replacement
+        {
+            public string NewText;
+            public int Offset;
+            public int Length;
+        }
 
-		public NRefactoryExpressionResolverVisitor (DebuggerSession session, SourceLocation location, string expression)
-		{
-			this.expression = expression.Replace ("\n", "").Replace ("\r", "");
-			this.session = session;
-			this.location = location;
-		}
+        public NRefactoryExpressionResolverVisitor(DebuggerSession session, SourceLocation location, string expression)
+        {
+            this.expression = expression.Replace("\n", "").Replace("\r", "");
+            this.session = session;
+            this.location = location;
+        }
 
-		internal string GetResolvedExpression ()
-		{
-			if (replacements.Count == 0)
-				return expression;
+        internal string GetResolvedExpression()
+        {
+            if (replacements.Count == 0)
+                return expression;
 
-			replacements.Sort ((r1, r2) => r1.Offset.CompareTo (r2.Offset));
-			var resolved = new StringBuilder ();
-			int i = 0;
+            replacements.Sort((r1, r2) => r1.Offset.CompareTo(r2.Offset));
+            var resolved = new StringBuilder();
+            int i = 0;
 
-			foreach (var replacement in replacements) {
-				resolved.Append (expression, i, replacement.Offset - i);
-				resolved.Append (replacement.NewText);
-				i = replacement.Offset + replacement.Length;
-			}
+            foreach (var replacement in replacements)
+            {
+                resolved.Append(expression, i, replacement.Offset - i);
+                resolved.Append(replacement.NewText);
+                i = replacement.Offset + replacement.Length;
+            }
 
-			var last = replacements [replacements.Count - 1];
-			resolved.Append (expression, last.Offset + last.Length, expression.Length - (last.Offset + last.Length));
+            var last = replacements[replacements.Count - 1];
+            resolved.Append(expression, last.Offset + last.Length, expression.Length - (last.Offset + last.Length));
 
-			return resolved.ToString ();
-		}
+            return resolved.ToString();
+        }
 
-		string GenerateGenericArgs (int genericArgs)
-		{
-			if (genericArgs == 0)
-				return "";
+        string GenerateGenericArgs(int genericArgs)
+        {
+            if (genericArgs == 0)
+                return "";
 
-			string result = "<";
-			for (int i = 0; i < genericArgs; i++)
-				result += "int,";
+            string result = "<";
+            for (int i = 0; i < genericArgs; i++)
+                result += "int,";
 
-			return result.Remove (result.Length - 1) + ">";
-		}
+            return result.Remove(result.Length - 1) + ">";
+        }
 
-		void ReplaceType (string name, int genericArgs, int offset, int length, bool memberType = false)
-		{
-			string type = null;
+        void ReplaceType(string name, int genericArgs, int offset, int length, bool memberType = false)
+        {
+            string type = null;
 
-			if (genericArgs == 0)
-				type = session.ResolveIdentifierAsType (name, location);
-			else
-				type = session.ResolveIdentifierAsType (name + "`" + genericArgs, location);
+            if (genericArgs == 0)
+                type = session.ResolveIdentifierAsType(name, location);
+            else
+                type = session.ResolveIdentifierAsType(name + "`" + genericArgs, location);
 
-			if (string.IsNullOrEmpty (type)) {
-				parentType = null;
-			} else {
-				if (memberType) {
-					type = type.Substring (type.LastIndexOf ('.') + 1);
-				} else {
-					type = "global::" + type;
-				}
+            if (string.IsNullOrEmpty(type))
+            {
+                parentType = null;
+            }
+            else
+            {
+                if (memberType)
+                {
+                    type = type.Substring(type.LastIndexOf('.') + 1);
+                }
+                else
+                {
+                    type = "global::" + type;
+                }
 
-				parentType = type + GenerateGenericArgs (genericArgs);
-				var replacement = new Replacement { Offset = offset, Length = length, NewText = type };
-				replacements.Add (replacement);
-			}
-		}
+                parentType = type + GenerateGenericArgs(genericArgs);
+                var replacement = new Replacement { Offset = offset, Length = length, NewText = type };
+                replacements.Add(replacement);
+            }
+        }
 
-		void ReplaceType (AstType type)
-		{
-			int length = type.EndLocation.Column - type.StartLocation.Column;
-			int offset = type.StartLocation.Column - 1;
+        void ReplaceType(AstType type)
+        {
+            int length = type.EndLocation.Column - type.StartLocation.Column;
+            int offset = type.StartLocation.Column - 1;
 
-			ReplaceType (type.ToString (), 0, offset, length);
-		}
+            ReplaceType(type.ToString(), 0, offset, length);
+        }
 
-		public override void VisitIdentifierExpression (IdentifierExpression identifierExpression)
-		{
-			base.VisitIdentifierExpression (identifierExpression);
+        public override void VisitIdentifierExpression(IdentifierExpression identifierExpression)
+        {
+            base.VisitIdentifierExpression(identifierExpression);
 
-			int length = identifierExpression.IdentifierToken.EndLocation.Column - identifierExpression.IdentifierToken.StartLocation.Column;
-			int offset = identifierExpression.IdentifierToken.StartLocation.Column - 1;
+            int length = identifierExpression.IdentifierToken.EndLocation.Column - identifierExpression.IdentifierToken.StartLocation.Column;
+            int offset = identifierExpression.IdentifierToken.StartLocation.Column - 1;
 
-			ReplaceType (identifierExpression.Identifier, identifierExpression.TypeArguments.Count, offset, length);
-		}
+            ReplaceType(identifierExpression.Identifier, identifierExpression.TypeArguments.Count, offset, length);
+        }
 
-		public override void VisitTypeReferenceExpression (TypeReferenceExpression typeReferenceExpression)
-		{
-			ReplaceType (typeReferenceExpression.Type);
-		}
+        public override void VisitTypeReferenceExpression(TypeReferenceExpression typeReferenceExpression)
+        {
+            ReplaceType(typeReferenceExpression.Type);
+        }
 
-		public override void VisitComposedType (ComposedType composedType)
-		{
-			// Note: we specifically do not handle this case because the 'base' implementation will eventually
-			// call VisitMemberType() or VisitSimpleType() on the ComposedType.BaseType which is all we really
-			// care to resolve.
-			base.VisitComposedType (composedType);
-		}
+        public override void VisitComposedType(ComposedType composedType)
+        {
+            // Note: we specifically do not handle this case because the 'base' implementation will eventually
+            // call VisitMemberType() or VisitSimpleType() on the ComposedType.BaseType which is all we really
+            // care to resolve.
+            base.VisitComposedType(composedType);
+        }
 
-		public override void VisitMemberType (MemberType memberType)
-		{
-			base.VisitMemberType (memberType);
-			if (parentType == null)
-				return;
-			int length = memberType.MemberNameToken.EndLocation.Column - memberType.MemberNameToken.StartLocation.Column;
-			int offset = memberType.MemberNameToken.StartLocation.Column - 1;
-			ReplaceType (parentType + "." + memberType.MemberName, memberType.TypeArguments.Count, offset, length, true);
-		}
+        public override void VisitMemberType(MemberType memberType)
+        {
+            base.VisitMemberType(memberType);
+            if (parentType == null)
+                return;
+            int length = memberType.MemberNameToken.EndLocation.Column - memberType.MemberNameToken.StartLocation.Column;
+            int offset = memberType.MemberNameToken.StartLocation.Column - 1;
+            ReplaceType(parentType + "." + memberType.MemberName, memberType.TypeArguments.Count, offset, length, true);
+        }
 
-		public override void VisitSimpleType (SimpleType simpleType)
-		{
-			base.VisitSimpleType (simpleType);
+        public override void VisitSimpleType(SimpleType simpleType)
+        {
+            base.VisitSimpleType(simpleType);
 
-			int length = simpleType.IdentifierToken.EndLocation.Column - simpleType.IdentifierToken.StartLocation.Column;
-			int offset = simpleType.IdentifierToken.StartLocation.Column - 1;
+            int length = simpleType.IdentifierToken.EndLocation.Column - simpleType.IdentifierToken.StartLocation.Column;
+            int offset = simpleType.IdentifierToken.StartLocation.Column - 1;
 
-			ReplaceType (simpleType.Identifier, simpleType.TypeArguments.Count, offset, length);
-		}
-	}
+            ReplaceType(simpleType.Identifier, simpleType.TypeArguments.Count, offset, length);
+        }
+    }
 }

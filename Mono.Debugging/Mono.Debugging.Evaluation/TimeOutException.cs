@@ -29,10 +29,9 @@ using System;
 
 namespace Mono.Debugging.Evaluation
 {
-	public class TimeOutException: EvaluatorException
-	{
-		public TimeOutException (): base ("Timed out.")
-		{
-		}
-	}
+    public class TimeOutException : EvaluatorException
+    {
+        public TimeOutException()
+            : base("Timed out.") { }
+    }
 }

@@ -27,122 +27,115 @@
 
 using System;
 using System.Collections.Generic;
-
 using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-	public class NamespaceValueReference: ValueReference
-	{
-		readonly string namspace;
-		readonly string name;
+    public class NamespaceValueReference : ValueReference
+    {
+        readonly string namspace;
+        readonly string name;
 
-		public NamespaceValueReference (EvaluationContext ctx, string name) : base (ctx)
-		{
-			namspace = name;
+        public NamespaceValueReference(EvaluationContext ctx, string name)
+            : base(ctx)
+        {
+            namspace = name;
 
-			int i = namspace.LastIndexOf ('.');
-			if (i != -1)
-				this.name = namspace.Substring (i+1);
-			else
-				this.name = namspace;
-		}
+            int i = namspace.LastIndexOf('.');
+            if (i != -1)
+                this.name = namspace.Substring(i + 1);
+            else
+                this.name = namspace;
+        }
 
-		public override object Value {
-			get {
-				throw new NotSupportedException ();
-			}
-			set {
-				throw new NotSupportedException ();
-			}
-		}
-		
-		public override object Type {
-			get {
-				throw new NotSupportedException ();
-			}
-		}
+        public override object Value
+        {
+            get { throw new NotSupportedException(); }
+            set { throw new NotSupportedException(); }
+        }
 
-		
-		public override object ObjectValue {
-			get {
-				throw new NotSupportedException ();
-			}
-		}
-		
-		public override string Name {
-			get {
-				return name;
-			}
-		}
-		
-		public override ObjectValueFlags Flags {
-			get {
-				return ObjectValueFlags.Namespace;
-			}
-		}
+        public override object Type
+        {
+            get { throw new NotSupportedException(); }
+        }
 
-		public override ValueReference GetChild (string name, EvaluationOptions options)
-		{
-			string newNs = namspace + "." + name;
+        public override object ObjectValue
+        {
+            get { throw new NotSupportedException(); }
+        }
 
-			var ctx = GetContext (options);
-			var type = ctx.Adapter.GetType (ctx, newNs);
+        public override string Name
+        {
+            get { return name; }
+        }
 
-			if (type != null)
-				return new TypeValueReference (ctx, type);
-			
-			return new NamespaceValueReference (ctx, newNs);
-		}
+        public override ObjectValueFlags Flags
+        {
+            get { return ObjectValueFlags.Namespace; }
+        }
 
-		public override ObjectValue[] GetChildren (ObjectPath path, int index, int count, EvaluationOptions options)
-		{
-			var children = new List<ObjectValue> ();
+        public override ValueReference GetChild(string name, EvaluationOptions options)
+        {
+            string newNs = namspace + "." + name;
 
-			foreach (var val in GetChildReferences (options))
-				children.Add (val.CreateObjectValue (options));
+            var ctx = GetContext(options);
+            var type = ctx.Adapter.GetType(ctx, newNs);
 
-			return children.ToArray ();
-		}
+            if (type != null)
+                return new TypeValueReference(ctx, type);
 
-		public override IEnumerable<ValueReference> GetChildReferences (EvaluationOptions options)
-		{
-			// Child types
-			string[] childNamespaces;
-			string[] childTypes;
+            return new NamespaceValueReference(ctx, newNs);
+        }
 
-			var ctx = GetContext (options);
-			ctx.Adapter.GetNamespaceContents (ctx, namspace, out childNamespaces, out childTypes);
+        public override ObjectValue[] GetChildren(ObjectPath path, int index, int count, EvaluationOptions options)
+        {
+            var children = new List<ObjectValue>();
 
-			var list = new List<ValueReference> ();
-			foreach (string typeName in childTypes) {
-				object tt = ctx.Adapter.GetType (ctx, typeName);
-				if (tt != null)
-					list.Add (new TypeValueReference (ctx, tt));
-			}
+            foreach (var val in GetChildReferences(options))
+                children.Add(val.CreateObjectValue(options));
 
-			list.Sort ((v1, v2) => string.Compare (v1.Name, v2.Name, StringComparison.CurrentCulture));
-			
-			// Child namespaces
-			var listNs = new List<ValueReference> ();
-			foreach (string ns in childNamespaces)
-				listNs.Add (new NamespaceValueReference (ctx, ns));
+            return children.ToArray();
+        }
 
-			listNs.Sort ((v1, v2) => string.Compare (v1.Name, v2.Name, StringComparison.CurrentCulture));
+        public override IEnumerable<ValueReference> GetChildReferences(EvaluationOptions options)
+        {
+            // Child types
+            string[] childNamespaces;
+            string[] childTypes;
 
-			list.AddRange (listNs);
+            var ctx = GetContext(options);
+            ctx.Adapter.GetNamespaceContents(ctx, namspace, out childNamespaces, out childTypes);
 
-			return list;
-		}
+            var list = new List<ValueReference>();
+            foreach (string typeName in childTypes)
+            {
+                object tt = ctx.Adapter.GetType(ctx, typeName);
+                if (tt != null)
+                    list.Add(new TypeValueReference(ctx, tt));
+            }
 
-		protected override ObjectValue OnCreateObjectValue (EvaluationOptions options)
-		{
-			return Mono.Debugging.Client.ObjectValue.CreateObject (this, new ObjectPath (Name), "<namespace>", namspace, Flags, null);
-		}
+            list.Sort((v1, v2) => string.Compare(v1.Name, v2.Name, StringComparison.CurrentCulture));
 
-		public override string CallToString ()
-		{
-			return namspace;
-		}
-	}
+            // Child namespaces
+            var listNs = new List<ValueReference>();
+            foreach (string ns in childNamespaces)
+                listNs.Add(new NamespaceValueReference(ctx, ns));
+
+            listNs.Sort((v1, v2) => string.Compare(v1.Name, v2.Name, StringComparison.CurrentCulture));
+
+            list.AddRange(listNs);
+
+            return list;
+        }
+
+        protected override ObjectValue OnCreateObjectValue(EvaluationOptions options)
+        {
+            return Mono.Debugging.Client.ObjectValue.CreateObject(this, new ObjectPath(Name), "<namespace>", namspace, Flags, null);
+        }
+
+        public override string CallToString()
+        {
+            return namspace;
+        }
+    }
 }

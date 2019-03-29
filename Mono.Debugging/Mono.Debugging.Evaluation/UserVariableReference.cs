@@ -24,48 +24,47 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+using System;
 using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-	public class UserVariableReference: ValueReference
-	{
-		readonly string name;
-		object currentValue;
-		
-		public UserVariableReference (EvaluationContext ctx, string name): base (ctx)
-		{
-			this.name = name;
-		}
-		
-		public override string Name {
-			get {
-				return name;
-			}
-		}
-		
-		public override object Value {
-			get {
-				if (currentValue != null)
-					return currentValue;
+    public class UserVariableReference : ValueReference
+    {
+        readonly string name;
+        object currentValue;
 
-				throw new EvaluatorException ("Value undefined.");
-			}
-			set {
-				currentValue = value;
-			}
-		}
+        public UserVariableReference(EvaluationContext ctx, string name)
+            : base(ctx)
+        {
+            this.name = name;
+        }
 
-		public override object Type {
-			get {
-				return Context.Adapter.GetValueType (Context, Value);
-			}
-		}
-		
-		public override ObjectValueFlags Flags {
-			get {
-				return ObjectValueFlags.Variable;
-			}
-		}
-	}
+        public override string Name
+        {
+            get { return name; }
+        }
+
+        public override object Value
+        {
+            get
+            {
+                if (currentValue != null)
+                    return currentValue;
+
+                throw new EvaluatorException("Value undefined.");
+            }
+            set { currentValue = value; }
+        }
+
+        public override object Type
+        {
+            get { return Context.Adapter.GetValueType(Context, Value); }
+        }
+
+        public override ObjectValueFlags Flags
+        {
+            get { return ObjectValueFlags.Variable; }
+        }
+    }
 }

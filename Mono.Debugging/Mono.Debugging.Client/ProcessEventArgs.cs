@@ -29,19 +29,18 @@ using System;
 
 namespace Mono.Debugging.Client
 {
-	public class ProcessEventArgs: EventArgs
-	{
-		int processId;
-		
-		public int ProcessId {
-			get {
-				return processId;
-			}
-		}
-		
-		public ProcessEventArgs (int processId)
-		{
-			this.processId = processId;
-		}
-	}
+    public class ProcessEventArgs : EventArgs
+    {
+        int processId;
+
+        public int ProcessId
+        {
+            get { return processId; }
+        }
+
+        public ProcessEventArgs(int processId)
+        {
+            this.processId = processId;
+        }
+    }
 }

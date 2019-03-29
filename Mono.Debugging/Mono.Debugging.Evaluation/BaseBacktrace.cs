@@ -26,238 +26,256 @@
 
 using System;
 using System.Collections.Generic;
-using Mono.Debugging.Client;
 using Mono.Debugging.Backend;
+using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-	public abstract class BaseBacktrace: RemoteFrameObject, IBacktrace
-	{
-		readonly Dictionary<int, FrameInfo> frameInfo = new Dictionary<int, FrameInfo> ();
-		
-		protected BaseBacktrace (ObjectValueAdaptor adaptor)
-		{
-			Adaptor = adaptor;
-		}
-		
-		public abstract StackFrame[] GetStackFrames (int firstIndex, int lastIndex);
-		
-		public ObjectValueAdaptor Adaptor { get; set; }
-		
-		protected abstract EvaluationContext GetEvaluationContext (int frameIndex, EvaluationOptions options);
-		
-		public abstract int FrameCount { get; }
-	
-		public virtual ObjectValue[] GetLocalVariables (int frameIndex, EvaluationOptions options)
-		{
-			var frame = GetFrameInfo (frameIndex, options, false);
-			var list = new List<ObjectValue> ();
-			
-			if (frame == null) {
-				var val = Adaptor.CreateObjectValueAsync ("Local Variables", ObjectValueFlags.EvaluatingGroup, delegate {
-					frame = GetFrameInfo (frameIndex, options, true);
-					foreach (var local in frame.LocalVariables)
-						list.Add (local.CreateObjectValue (false, options));
+    public abstract class BaseBacktrace : RemoteFrameObject, IBacktrace
+    {
+        readonly Dictionary<int, FrameInfo> frameInfo = new Dictionary<int, FrameInfo>();
 
-					return ObjectValue.CreateArray (null, new ObjectPath ("Local Variables"), "", list.Count, ObjectValueFlags.EvaluatingGroup, list.ToArray ());
-				});
+        protected BaseBacktrace(ObjectValueAdaptor adaptor)
+        {
+            Adaptor = adaptor;
+        }
 
-				return new [] { val };
-			}
-			
-			foreach (ValueReference local in frame.LocalVariables)
-				list.Add (local.CreateObjectValue (true, options));
+        public abstract StackFrame[] GetStackFrames(int firstIndex, int lastIndex);
 
-			return list.ToArray ();
-		}
-		
-		public virtual ObjectValue[] GetParameters (int frameIndex, EvaluationOptions options)
-		{
-			var frame = GetFrameInfo (frameIndex, options, false);
-			var values = new List<ObjectValue> ();
+        public ObjectValueAdaptor Adaptor { get; set; }
 
-			if (frame == null) {
-				var value = Adaptor.CreateObjectValueAsync ("Parameters", ObjectValueFlags.EvaluatingGroup, delegate {
-					frame = GetFrameInfo (frameIndex, options, true);
-					foreach (var param in frame.Parameters)
-						values.Add (param.CreateObjectValue (false, options));
+        protected abstract EvaluationContext GetEvaluationContext(int frameIndex, EvaluationOptions options);
 
-					return ObjectValue.CreateArray (null, new ObjectPath ("Parameters"), "", values.Count, ObjectValueFlags.EvaluatingGroup, values.ToArray ());
-				});
+        public abstract int FrameCount { get; }
 
-				return new [] { value };
-			}
-			
-			foreach (var param in frame.Parameters)
-				values.Add (param.CreateObjectValue (true, options));
+        public virtual ObjectValue[] GetLocalVariables(int frameIndex, EvaluationOptions options)
+        {
+            var frame = GetFrameInfo(frameIndex, options, false);
+            var list = new List<ObjectValue>();
 
-			return values.ToArray ();
-		}
-		
-		public virtual ObjectValue GetThisReference (int frameIndex, EvaluationOptions options)
-		{
-			var frame = GetFrameInfo (frameIndex, options, false);
+            if (frame == null)
+            {
+                var val = Adaptor.CreateObjectValueAsync("Local Variables", ObjectValueFlags.EvaluatingGroup, delegate
+                {
+                    frame = GetFrameInfo(frameIndex, options, true);
+                    foreach (var local in frame.LocalVariables)
+                        list.Add(local.CreateObjectValue(false, options));
 
-			if (frame == null) {
-				return Adaptor.CreateObjectValueAsync ("this", ObjectValueFlags.EvaluatingGroup, delegate {
-					frame = GetFrameInfo (frameIndex, options, true);
-					ObjectValue[] values;
+                    return ObjectValue.CreateArray(null, new ObjectPath("Local Variables"), "", list.Count, ObjectValueFlags.EvaluatingGroup, list.ToArray());
+                });
 
-					if (frame.This != null)
-						values = new [] { frame.This.CreateObjectValue (false, options) };
-					else
-						values = new ObjectValue [0];
+                return new[] { val };
+            }
 
-					return ObjectValue.CreateArray (null, new ObjectPath ("this"), "", values.Length, ObjectValueFlags.EvaluatingGroup, values);
-				});
-			}
+            foreach (ValueReference local in frame.LocalVariables)
+                list.Add(local.CreateObjectValue(true, options));
 
-			return frame.This != null ? frame.This.CreateObjectValue (true, options) : null;
-		}
-		
-		public virtual ExceptionInfo GetException (int frameIndex, EvaluationOptions options)
-		{
-			var frame = GetFrameInfo (frameIndex, options, false);
-			ObjectValue value;
+            return list.ToArray();
+        }
 
-			if (frame == null) {
-				value = Adaptor.CreateObjectValueAsync (options.CurrentExceptionTag, ObjectValueFlags.EvaluatingGroup, delegate {
-					frame = GetFrameInfo (frameIndex, options, true);
-					ObjectValue[] values;
+        public virtual ObjectValue[] GetParameters(int frameIndex, EvaluationOptions options)
+        {
+            var frame = GetFrameInfo(frameIndex, options, false);
+            var values = new List<ObjectValue>();
 
-					if (frame.Exception != null)
-						values = new [] { frame.Exception.CreateObjectValue (false, options) };
-					else
-						values = new ObjectValue [0];
+            if (frame == null)
+            {
+                var value = Adaptor.CreateObjectValueAsync("Parameters", ObjectValueFlags.EvaluatingGroup, delegate
+                {
+                    frame = GetFrameInfo(frameIndex, options, true);
+                    foreach (var param in frame.Parameters)
+                        values.Add(param.CreateObjectValue(false, options));
 
-					return ObjectValue.CreateArray (null, new ObjectPath (options.CurrentExceptionTag), "", values.Length, ObjectValueFlags.EvaluatingGroup, values);
-				});
-			} else if (frame.Exception != null) {
-				value = frame.Exception.CreateObjectValue (true, options);
-			} else {
-				return null;
-			}
+                    return ObjectValue.CreateArray(null, new ObjectPath("Parameters"), "", values.Count, ObjectValueFlags.EvaluatingGroup, values.ToArray());
+                });
 
-			return new ExceptionInfo (value);
-		}
-		
-		public virtual ObjectValue GetExceptionInstance (int frameIndex, EvaluationOptions options)
-		{
-			var frame = GetFrameInfo (frameIndex, options, false);
+                return new[] { value };
+            }
 
-			if (frame == null) {
-				return Adaptor.CreateObjectValueAsync (options.CurrentExceptionTag, ObjectValueFlags.EvaluatingGroup, delegate {
-					frame = GetFrameInfo (frameIndex, options, true);
-					ObjectValue[] values;
+            foreach (var param in frame.Parameters)
+                values.Add(param.CreateObjectValue(true, options));
 
-					if (frame.Exception != null)
-						values = new [] { frame.Exception.Exception.CreateObjectValue (false, options) };
-					else
-						values = new ObjectValue [0];
+            return values.ToArray();
+        }
 
-					return ObjectValue.CreateArray (null, new ObjectPath (options.CurrentExceptionTag), "", values.Length, ObjectValueFlags.EvaluatingGroup, values);
-				});
-			}
+        public virtual ObjectValue GetThisReference(int frameIndex, EvaluationOptions options)
+        {
+            var frame = GetFrameInfo(frameIndex, options, false);
 
-			return frame.Exception != null ? frame.Exception.Exception.CreateObjectValue (true, options) : null;
-		}
-		
-		public virtual ObjectValue[] GetAllLocals (int frameIndex, EvaluationOptions options)
-		{
-			var locals = new List<ObjectValue> ();
-			
-			var excObj = GetExceptionInstance (frameIndex, options);
-			if (excObj != null)
-				locals.Insert (0, excObj);
-			
-			locals.AddRange (GetLocalVariables (frameIndex, options));
-			locals.AddRange (GetParameters (frameIndex, options));
-			
-			locals.Sort ((v1, v2) => StringComparer.InvariantCulture.Compare (v1.Name, v2.Name));
+            if (frame == null)
+            {
+                return Adaptor.CreateObjectValueAsync("this", ObjectValueFlags.EvaluatingGroup, delegate
+                {
+                    frame = GetFrameInfo(frameIndex, options, true);
+                    ObjectValue[] values;
 
-			var thisObj = GetThisReference (frameIndex, options);
-			if (thisObj != null)
-				locals.Insert (0, thisObj);
-			
-			return locals.ToArray ();
-		}
-		
-		public virtual ObjectValue[] GetExpressionValues (int frameIndex, string[] expressions, EvaluationOptions options)
-		{
-			if (Adaptor.IsEvaluating) {
-				var values = new List<ObjectValue> ();
+                    if (frame.This != null)
+                        values = new[] { frame.This.CreateObjectValue(false, options) };
+                    else
+                        values = new ObjectValue [0];
 
-				foreach (string exp in expressions) {
-					string tmpExp = exp;
-					var value = Adaptor.CreateObjectValueAsync (tmpExp, ObjectValueFlags.Field, delegate {
-						EvaluationContext cctx = GetEvaluationContext (frameIndex, options);
-						return Adaptor.GetExpressionValue (cctx, tmpExp);
-					});
-					values.Add (value);
-				}
+                    return ObjectValue.CreateArray(null, new ObjectPath("this"), "", values.Length, ObjectValueFlags.EvaluatingGroup, values);
+                });
+            }
 
-				return values.ToArray ();
-			}
+            return frame.This != null ? frame.This.CreateObjectValue(true, options) : null;
+        }
 
-			var ctx = GetEvaluationContext (frameIndex, options);
+        public virtual ExceptionInfo GetException(int frameIndex, EvaluationOptions options)
+        {
+            var frame = GetFrameInfo(frameIndex, options, false);
+            ObjectValue value;
 
-			return ctx.Adapter.GetExpressionValuesAsync (ctx, expressions);
-		}
-		
-		public virtual CompletionData GetExpressionCompletionData (int frameIndex, string exp)
-		{
-			var ctx = GetEvaluationContext (frameIndex, EvaluationOptions.DefaultOptions);
-			return ctx.Adapter.GetExpressionCompletionData (ctx, exp);
-		}
-		
-		public virtual AssemblyLine[] Disassemble (int frameIndex, int firstLine, int count)
-		{
-			throw new NotImplementedException ();
-		}
-		
-		public virtual ValidationResult ValidateExpression (int frameIndex, string expression, EvaluationOptions options)
-		{
-			var ctx = GetEvaluationContext (frameIndex, options);
-			return Adaptor.ValidateExpression (ctx, expression);
-		}
-		
-		FrameInfo GetFrameInfo (int frameIndex, EvaluationOptions options, bool ignoreEvalStatus)
-		{
-			FrameInfo finfo;
+            if (frame == null)
+            {
+                value = Adaptor.CreateObjectValueAsync(options.CurrentExceptionTag, ObjectValueFlags.EvaluatingGroup, delegate
+                {
+                    frame = GetFrameInfo(frameIndex, options, true);
+                    ObjectValue[] values;
 
-			if (frameInfo.TryGetValue (frameIndex, out finfo))
-				return finfo;
-			
-			if (!ignoreEvalStatus && Adaptor.IsEvaluating)
-				return null;
-			
-			var ctx = GetEvaluationContext (frameIndex, options);
-			if (ctx == null)
-				return null;
-			
-			finfo = new FrameInfo ();
-			finfo.Context = ctx;
-			//Don't try to optimize lines below with lazy loading, you won't gain anything(in communication with runtime)
-			finfo.LocalVariables.AddRange (ctx.Evaluator.GetLocalVariables (ctx));
-			finfo.Parameters.AddRange (ctx.Evaluator.GetParameters (ctx));
-			finfo.This = ctx.Evaluator.GetThisReference (ctx);
+                    if (frame.Exception != null)
+                        values = new[] { frame.Exception.CreateObjectValue(false, options) };
+                    else
+                        values = new ObjectValue [0];
 
-			var exp = ctx.Evaluator.GetCurrentException (ctx);
-			if (exp != null)
-				finfo.Exception = new ExceptionInfoSource (ctx, exp);
+                    return ObjectValue.CreateArray(null, new ObjectPath(options.CurrentExceptionTag), "", values.Length, ObjectValueFlags.EvaluatingGroup, values);
+                });
+            }
+            else if (frame.Exception != null)
+            {
+                value = frame.Exception.CreateObjectValue(true, options);
+            }
+            else
+            {
+                return null;
+            }
 
-			frameInfo[frameIndex] = finfo;
+            return new ExceptionInfo(value);
+        }
 
-			return finfo;
-		}
-	}
-	
-	class FrameInfo
-	{
-		public EvaluationContext Context;
-		public List<ValueReference> LocalVariables = new List<ValueReference> ();
-		public List<ValueReference> Parameters = new List<ValueReference> ();
-		public ValueReference This;
-		public ExceptionInfoSource Exception;
-	}
+        public virtual ObjectValue GetExceptionInstance(int frameIndex, EvaluationOptions options)
+        {
+            var frame = GetFrameInfo(frameIndex, options, false);
+
+            if (frame == null)
+            {
+                return Adaptor.CreateObjectValueAsync(options.CurrentExceptionTag, ObjectValueFlags.EvaluatingGroup, delegate
+                {
+                    frame = GetFrameInfo(frameIndex, options, true);
+                    ObjectValue[] values;
+
+                    if (frame.Exception != null)
+                        values = new[] { frame.Exception.Exception.CreateObjectValue(false, options) };
+                    else
+                        values = new ObjectValue [0];
+
+                    return ObjectValue.CreateArray(null, new ObjectPath(options.CurrentExceptionTag), "", values.Length, ObjectValueFlags.EvaluatingGroup, values);
+                });
+            }
+
+            return frame.Exception != null ? frame.Exception.Exception.CreateObjectValue(true, options) : null;
+        }
+
+        public virtual ObjectValue[] GetAllLocals(int frameIndex, EvaluationOptions options)
+        {
+            var locals = new List<ObjectValue>();
+
+            var excObj = GetExceptionInstance(frameIndex, options);
+            if (excObj != null)
+                locals.Insert(0, excObj);
+
+            locals.AddRange(GetLocalVariables(frameIndex, options));
+            locals.AddRange(GetParameters(frameIndex, options));
+
+            locals.Sort((v1, v2) => StringComparer.InvariantCulture.Compare(v1.Name, v2.Name));
+
+            var thisObj = GetThisReference(frameIndex, options);
+            if (thisObj != null)
+                locals.Insert(0, thisObj);
+
+            return locals.ToArray();
+        }
+
+        public virtual ObjectValue[] GetExpressionValues(int frameIndex, string[] expressions, EvaluationOptions options)
+        {
+            if (Adaptor.IsEvaluating)
+            {
+                var values = new List<ObjectValue>();
+
+                foreach (string exp in expressions)
+                {
+                    string tmpExp = exp;
+                    var value = Adaptor.CreateObjectValueAsync(tmpExp, ObjectValueFlags.Field, delegate
+                    {
+                        EvaluationContext cctx = GetEvaluationContext(frameIndex, options);
+                        return Adaptor.GetExpressionValue(cctx, tmpExp);
+                    });
+                    values.Add(value);
+                }
+
+                return values.ToArray();
+            }
+
+            var ctx = GetEvaluationContext(frameIndex, options);
+
+            return ctx.Adapter.GetExpressionValuesAsync(ctx, expressions);
+        }
+
+        public virtual CompletionData GetExpressionCompletionData(int frameIndex, string exp)
+        {
+            var ctx = GetEvaluationContext(frameIndex, EvaluationOptions.DefaultOptions);
+            return ctx.Adapter.GetExpressionCompletionData(ctx, exp);
+        }
+
+        public virtual AssemblyLine[] Disassemble(int frameIndex, int firstLine, int count)
+        {
+            throw new NotImplementedException();
+        }
+
+        public virtual ValidationResult ValidateExpression(int frameIndex, string expression, EvaluationOptions options)
+        {
+            var ctx = GetEvaluationContext(frameIndex, options);
+            return Adaptor.ValidateExpression(ctx, expression);
+        }
+
+        FrameInfo GetFrameInfo(int frameIndex, EvaluationOptions options, bool ignoreEvalStatus)
+        {
+            FrameInfo finfo;
+
+            if (frameInfo.TryGetValue(frameIndex, out finfo))
+                return finfo;
+
+            if (!ignoreEvalStatus && Adaptor.IsEvaluating)
+                return null;
+
+            var ctx = GetEvaluationContext(frameIndex, options);
+            if (ctx == null)
+                return null;
+
+            finfo = new FrameInfo();
+            finfo.Context = ctx;
+
+            //Don't try to optimize lines below with lazy loading, you won't gain anything(in communication with runtime)
+            finfo.LocalVariables.AddRange(ctx.Evaluator.GetLocalVariables(ctx));
+            finfo.Parameters.AddRange(ctx.Evaluator.GetParameters(ctx));
+            finfo.This = ctx.Evaluator.GetThisReference(ctx);
+
+            var exp = ctx.Evaluator.GetCurrentException(ctx);
+            if (exp != null)
+                finfo.Exception = new ExceptionInfoSource(ctx, exp);
+
+            frameInfo[frameIndex] = finfo;
+
+            return finfo;
+        }
+    }
+
+    class FrameInfo
+    {
+        public EvaluationContext Context;
+        public List<ValueReference> LocalVariables = new List<ValueReference>();
+        public List<ValueReference> Parameters = new List<ValueReference>();
+        public ValueReference This;
+        public ExceptionInfoSource Exception;
+    }
 }

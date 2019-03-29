@@ -25,88 +25,101 @@
 // THE SOFTWARE.
 
 using System;
-
-using Mono.Debugging.Evaluation;
-using Mono.Debugging.Client;
 using Mono.Debugger.Soft;
+using Mono.Debugging.Client;
+using Mono.Debugging.Evaluation;
 
 namespace Mono.Debugging.Soft
 {
-	public class VariableValueReference : ValueReference
-	{
-		readonly LocalVariable variable;
-		LocalVariableBatch batch;
-		Value value;
-		string name;
+    public class VariableValueReference : ValueReference
+    {
+        readonly LocalVariable variable;
+        LocalVariableBatch batch;
+        Value value;
+        string name;
 
-		public VariableValueReference (EvaluationContext ctx, string name, LocalVariable variable, LocalVariableBatch batch) : base (ctx)
-		{
-			this.variable = variable;
-			this.batch = batch;
-			this.name = name;
-		}
+        public VariableValueReference(EvaluationContext ctx, string name, LocalVariable variable, LocalVariableBatch batch)
+            : base(ctx)
+        {
+            this.variable = variable;
+            this.batch = batch;
+            this.name = name;
+        }
 
-		public VariableValueReference (EvaluationContext ctx, string name, LocalVariable variable, Value value) : base (ctx)
-		{
-			this.variable = variable;
-			this.value = value;
-			this.name = name;
-		}
-		
-		public VariableValueReference (EvaluationContext ctx, string name, LocalVariable variable) : base (ctx)
-		{
-			this.variable = variable;
-			this.name = name;
-		}
-		
-		public override ObjectValueFlags Flags {
-			get {
-				return ObjectValueFlags.Variable;
-			}
-		}
+        public VariableValueReference(EvaluationContext ctx, string name, LocalVariable variable, Value value)
+            : base(ctx)
+        {
+            this.variable = variable;
+            this.value = value;
+            this.name = name;
+        }
 
-		public override string Name {
-			get {
-				return name;
-			}
-		}
+        public VariableValueReference(EvaluationContext ctx, string name, LocalVariable variable)
+            : base(ctx)
+        {
+            this.variable = variable;
+            this.name = name;
+        }
 
-		public override object Type {
-			get {
-				return variable.Type;
-			}
-		}
+        public override ObjectValueFlags Flags
+        {
+            get { return ObjectValueFlags.Variable; }
+        }
 
-		Value NormalizeValue (EvaluationContext ctx, Value value)
-		{
-			if (variable.Type.IsPointer) {
-				long addr = (long) ((PrimitiveValue) value).Value;
+        public override string Name
+        {
+            get { return name; }
+        }
 
-				return new PointerValue (value.VirtualMachine, variable.Type, addr);
-			}
+        public override object Type
+        {
+            get { return variable.Type; }
+        }
 
-			return ctx.Adapter.IsNull (ctx, value) ? null : value;
-		}
+        Value NormalizeValue(EvaluationContext ctx, Value value)
+        {
+            if (variable.Type.IsPointer)
+            {
+                long addr = (long)((PrimitiveValue)value).Value;
 
-		public override object Value {
-			get {
-				var ctx = (SoftEvaluationContext) Context;
+                return new PointerValue(value.VirtualMachine, variable.Type, addr);
+            }
 
-				try {
-					if (value == null)
-						value = batch != null ? batch.GetValue (variable) : ctx.Frame.GetValue (variable);
+            return ctx.Adapter.IsNull(ctx, value) ? null : value;
+        }
 
-					return NormalizeValue (ctx, value);
-				} catch (AbsentInformationException) {
-					throw new EvaluatorException ("Value not available");
-				} catch (ArgumentException ex) {
-					throw new EvaluatorException (ex.Message);
-				}
-			}
-			set {
-				((SoftEvaluationContext) Context).Frame.SetValue (variable, (Value) value);
-				this.value = (Value) value;
-			}
-		}
-	}
+        public override object Value
+        {
+            get
+            {
+                var ctx = (SoftEvaluationContext)Context;
+
+                try
+                {
+                    if (value == null)
+                        value = batch != null ? batch.GetValue(variable) : ctx.Frame.GetValue(variable);
+
+                    return NormalizeValue(ctx, value);
+                }
+                catch (AbsentInformationException ex)
+                {
+                    throw new EvaluatorException(ex, "Value not available");
+                }
+                catch (ArgumentException ex)
+                {
+                    throw new EvaluatorException(ex.Message);
+                }
+            }
+            set
+            {
+                ((SoftEvaluationContext)Context).Frame.SetValue(variable, (Value)value);
+                this.value = (Value)value;
+            }
+        }
+
+        internal string[] GetTupleElementNames(SoftEvaluationContext ctx)
+        {
+            return ctx.Session.GetPdbData(variable.Method)?.GetTupleElementNames(variable.Method, variable.Index);
+        }
+    }
 }

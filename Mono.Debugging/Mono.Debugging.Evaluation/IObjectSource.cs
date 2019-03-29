@@ -28,8 +28,8 @@ using System;
 
 namespace Mono.Debugging.Evaluation
 {
-	public interface IObjectSource
-	{
-		object Value { get; set; }
-	}
+    public interface IObjectSource
+    {
+        object Value { get; set; }
+    }
 }

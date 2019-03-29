@@ -26,12 +26,11 @@
 //
 
 using System;
-using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Backend
 {
-	public interface IObjectValueUpdater: IDebuggerBackendObject
-	{
-		void RegisterUpdateCallbacks (UpdateCallback[] callbacks);
-	}
+    public interface IObjectValueUpdater : IDebuggerBackendObject
+    {
+        void RegisterUpdateCallbacks(UpdateCallback[] callbacks);
+    }
 }

@@ -23,35 +23,36 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
+
 using System;
 
 namespace Mono.Debugging.Client
 {
-	public enum BreakEventStatus
-	{
-		/// <summary>
-		/// The breakpoint is not connected to any debug session
-		/// </summary>
-		Disconnected = 1,
-		
-		/// <summary>
-		/// The breakpoint is not yet bound to a valid location
-		/// </summary>
-		NotBound = 2,
-		
-		/// <summary>
-		/// The breakpoint is bound 
-		/// </summary>
-		Bound = 3,
-		
-		/// <summary>
-		/// The breakpoint could not be bound because the breakpoint location is invalid
-		/// </summary>
-		Invalid = 4,
-		
-		/// <summary>
-		/// There was a debugger error while binding the breakpoint
-		/// </summary>
-		BindError = 5
-	}
+    public enum BreakEventStatus
+    {
+        /// <summary>
+        /// The breakpoint is not connected to any debug session
+        /// </summary>
+        Disconnected = 1,
+
+        /// <summary>
+        /// The breakpoint is not yet bound to a valid location
+        /// </summary>
+        NotBound = 2,
+
+        /// <summary>
+        /// The breakpoint is bound 
+        /// </summary>
+        Bound = 3,
+
+        /// <summary>
+        /// The breakpoint could not be bound because the breakpoint location is invalid
+        /// </summary>
+        Invalid = 4,
+
+        /// <summary>
+        /// There was a debugger error while binding the breakpoint
+        /// </summary>
+        BindError = 5
+    }
 }

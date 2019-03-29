@@ -30,68 +30,67 @@ using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-	public class NullValueReference: ValueReference
-	{
-		readonly object type;
-		object obj;
-		bool valueCreated;
+    public class NullValueReference : ValueReference
+    {
+        readonly object type;
+        object obj;
+        bool valueCreated;
 
-		public NullValueReference (EvaluationContext ctx, object type) : base (ctx)
-		{
-			this.type = type;
-		}
-	
-		public override object Value {
-			get {
-				if (!valueCreated) {
-					valueCreated = true;
-					obj = Context.Adapter.CreateNullValue (Context, type);
-				}
-				return obj;
-			}
-			set {
-				throw new NotSupportedException ();
-			}
-		}
-		
-		public override object Type {
-			get {
-				return type;
-			}
-		}
-		
-		public override object ObjectValue {
-			get {
-				return null;
-			}
-		}
+        public NullValueReference(EvaluationContext ctx, object type)
+            : base(ctx)
+        {
+            this.type = type;
+        }
 
-		public override string Name {
-			get {
-				return "null";
-			}
-		}
-		
-		public override ObjectValueFlags Flags {
-			get {
-				return ObjectValueFlags.Literal;
-			}
-		}
+        public override object Value
+        {
+            get
+            {
+                if (!valueCreated)
+                {
+                    valueCreated = true;
+                    obj = Context.Adapter.CreateNullValue(Context, type);
+                }
 
-		protected override ObjectValue OnCreateObjectValue (EvaluationOptions options)
-		{
-			string tn = Context.Adapter.GetTypeName (GetContext (options), Type);
-			return Mono.Debugging.Client.ObjectValue.CreateObject (null, new ObjectPath (Name), tn, "null", Flags, null);
-		}
+                return obj;
+            }
+            set { throw new NotSupportedException(); }
+        }
 
-		public override ValueReference GetChild (string name, EvaluationOptions options)
-		{
-			return null;
-		}
+        public override object Type
+        {
+            get { return type; }
+        }
 
-		public override ObjectValue[] GetChildren (ObjectPath path, int index, int count, EvaluationOptions options)
-		{
-			return new ObjectValue [0];
-		}
-	}
+        public override object ObjectValue
+        {
+            get { return null; }
+        }
+
+        public override string Name
+        {
+            get { return "null"; }
+        }
+
+        public override ObjectValueFlags Flags
+        {
+            get { return ObjectValueFlags.Literal; }
+        }
+
+        protected override ObjectValue OnCreateObjectValue(EvaluationOptions options)
+        {
+            string tn = Context.Adapter.GetTypeName(GetContext(options), Type);
+            return Mono.Debugging.Client.ObjectValue.CreateObject(null, new ObjectPath(Name), tn, "null", Flags, null);
+        }
+
+        public override ValueReference GetChild(string name, EvaluationOptions options)
+        {
+            return null;
+        }
+
+        public override ObjectValue[] GetChildren(ObjectPath path, int index, int count, EvaluationOptions options)
+        {
+            return new ObjectValue [0];
+        }
+    }
 }

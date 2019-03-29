@@ -23,12 +23,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+using System;
+
 namespace Mono.Debugging.Evaluation
 {
-	public interface IStringAdaptor
-	{
-		string Substring (int index, int length);
-		string Value { get; }
-		int Length { get; }
-	}
+    public interface IStringAdaptor
+    {
+        string Substring(int index, int length);
+        string Value { get; }
+        int Length { get; }
+    }
 }

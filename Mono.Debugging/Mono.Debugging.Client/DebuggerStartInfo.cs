@@ -30,63 +30,53 @@ using System.Collections.Generic;
 
 namespace Mono.Debugging.Client
 {
-	[Serializable]
-	public class DebuggerStartInfo
-	{
-		string command;
-		string arguments;
-		string runtimeArguments;
-		string workingDirectory;
-		Dictionary<string, string> environmentVariables;
-		
-		public string Command {
-			get {
-				return command;
-			}
-			set {
-				command = value;
-			}
-		}
+    [Serializable]
+    public class DebuggerStartInfo
+    {
+        string command;
+        string arguments;
+        string runtimeArguments;
+        string workingDirectory;
+        Dictionary<string, string> environmentVariables;
 
-		public string Arguments {
-			get {
-				return arguments;
-			}
-			set {
-				arguments = value;
-			}
-		}
+        public string Command
+        {
+            get { return command; }
+            set { command = value; }
+        }
 
-		public string RuntimeArguments {
-			get {
-				return runtimeArguments;
-			}
-			set {
-				runtimeArguments = value;
-			}
-		}
+        public string Arguments
+        {
+            get { return arguments; }
+            set { arguments = value; }
+        }
 
-		public string WorkingDirectory {
-			get {
-				return workingDirectory;
-			}
-			set {
-				workingDirectory = value;
-			}
-		}
+        public string RuntimeArguments
+        {
+            get { return runtimeArguments; }
+            set { runtimeArguments = value; }
+        }
 
-		public Dictionary<string, string> EnvironmentVariables {
-			get {
-				if (environmentVariables == null)
-					environmentVariables = new Dictionary<string,string> ();
-				return environmentVariables;
-			}
-		}
-		
-		public bool UseExternalConsole { get; set; }
-		
-		public bool CloseExternalConsoleOnExit { get; set; }
+        public string WorkingDirectory
+        {
+            get { return workingDirectory; }
+            set { workingDirectory = value; }
+        }
 
-		public bool RequiresManualStart { get; set; }
-	}
+        public Dictionary<string, string> EnvironmentVariables
+        {
+            get
+            {
+                if (environmentVariables == null)
+                    environmentVariables = new Dictionary<string, string>();
+                return environmentVariables;
+            }
+        }
+
+        public bool UseExternalConsole { get; set; }
+
+        public bool CloseExternalConsoleOnExit { get; set; }
+
+        public bool RequiresManualStart { get; set; }
+    }
 }

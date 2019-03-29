@@ -26,177 +26,190 @@
 //
 
 using System;
-using System.Xml;
 using System.IO;
+using System.Xml;
 
 namespace Mono.Debugging.Client
 {
-	[Serializable]
-	public class Breakpoint: BreakEvent
-	{
-		int adjustedColumn = -1;
-		int adjustedLine = -1;
-		string fileName;
-		int column;
-		int line;
-		
-		public Breakpoint (string fileName, int line, int column)
-		{
-			FileName = fileName;
-			Column = column;
-			Line = line;
-		}
+    [Serializable]
+    public class Breakpoint : BreakEvent
+    {
+        int adjustedColumn = -1;
+        int adjustedLine = -1;
+        string fileName;
+        int column;
+        int line;
 
-		public Breakpoint (string fileName, int line) : this (fileName, line, 1)
-		{
-		}
-		
-		internal Breakpoint (XmlElement elem, string baseDir) : base (elem, baseDir)
-		{
-			string s = elem.GetAttribute ("relfile");
-			if (!string.IsNullOrEmpty (s) && baseDir != null) {
-				fileName = Path.Combine (baseDir, s);
-			} else {
-				s = elem.GetAttribute ("file");
-				if (!string.IsNullOrEmpty (s))
-					fileName = s;
-			}
-			
-			s = elem.GetAttribute ("line");
-			if (string.IsNullOrEmpty (s) || !int.TryParse (s, out line))
-				line = 1;
-			
-			s = elem.GetAttribute ("column");
-			if (string.IsNullOrEmpty (s) || !int.TryParse (s, out column))
-				column = 1;
-		}
+        public Breakpoint(string fileName, int line, int column)
+        {
+            FileName = fileName;
+            Column = column;
+            Line = line;
+        }
 
-		internal override XmlElement ToXml (XmlDocument doc, string baseDir)
-		{
-			XmlElement elem = base.ToXml (doc, baseDir);
+        public Breakpoint(string fileName, int line)
+            : this(fileName, line, 1) { }
 
-			if (!string.IsNullOrEmpty (fileName)) {
-				elem.SetAttribute ("file", fileName);
-				if (baseDir != null) {
-					if (fileName.StartsWith (baseDir, StringComparison.Ordinal))
-						elem.SetAttribute ("relfile", fileName.Substring (baseDir.Length).TrimStart (Path.DirectorySeparatorChar));
-				}
-			}
+        internal Breakpoint(XmlElement elem, string baseDir)
+            : base(elem, baseDir)
+        {
+            string s = elem.GetAttribute("relfile");
+            if (!string.IsNullOrEmpty(s) && baseDir != null)
+            {
+                fileName = Path.Combine(baseDir, s);
+            }
+            else
+            {
+                s = elem.GetAttribute("file");
+                if (!string.IsNullOrEmpty(s))
+                    fileName = s;
+            }
 
-			elem.SetAttribute ("line", line.ToString ());
-			elem.SetAttribute ("column", column.ToString ());
+            s = elem.GetAttribute("line");
+            if (string.IsNullOrEmpty(s) || !int.TryParse(s, out line))
+                line = 1;
 
-			return elem;
-		}
-		
-		public string FileName {
-			get { return fileName; }
-			protected set { fileName = value; }
-		}
+            s = elem.GetAttribute("column");
+            if (string.IsNullOrEmpty(s) || !int.TryParse(s, out column))
+                column = 1;
+        }
 
-		public int OriginalColumn {
-			get { return column; }
-		}
-		
-		public int Column {
-			get { return adjustedColumn == -1 ? column : adjustedColumn; }
-			protected set { column = value; }
-		}
-		
-		public int OriginalLine {
-			get { return line; }
-		}
-		
-		public int Line {
-			get { return adjustedLine == -1 ? line : adjustedLine; }
-			protected set { line = value; }
-		}
-		
-		public void SetColumn (int newColumn)
-		{
-			ResetAdjustedColumn ();
-			column = newColumn;
-		}
-		
-		public void SetLine (int newLine)
-		{
-			ResetAdjustedLine ();
-			line = newLine;
-		}
-		
-		internal void SetAdjustedColumn (int newColumn)
-		{
-			adjustedColumn = newColumn;
-		}
-		
-		internal void SetAdjustedLine (int newLine)
-		{
-			adjustedLine = newLine;
-		}
+        internal override XmlElement ToXml(XmlDocument doc, string baseDir)
+        {
+            XmlElement elem = base.ToXml(doc, baseDir);
 
-		// FIXME: make this private
-		internal void ResetAdjustedColumn ()
-		{
-			adjustedColumn = -1;
-		}
+            if (!string.IsNullOrEmpty(fileName))
+            {
+                elem.SetAttribute("file", fileName);
+                if (baseDir != null)
+                {
+                    if (fileName.StartsWith(baseDir, StringComparison.Ordinal))
+                        elem.SetAttribute("relfile", fileName.Substring(baseDir.Length).TrimStart(Path.DirectorySeparatorChar));
+                }
+            }
 
-		// FIXME: make this private
-		internal void ResetAdjustedLine ()
-		{
-			adjustedLine = -1;
-		}
+            elem.SetAttribute("line", line.ToString());
+            elem.SetAttribute("column", column.ToString());
 
-		public override bool Reset ()
-		{
-			bool changed = base.Reset () || HasAdjustedLine || HasAdjustedColumn;
+            return elem;
+        }
 
-			adjustedColumn = -1;
-			adjustedLine = -1;
+        public string FileName
+        {
+            get { return fileName; }
+            protected set { fileName = value; }
+        }
 
-			return changed;
-		}
+        public int OriginalColumn
+        {
+            get { return column; }
+        }
 
-		// FIXME: make this private
-		internal bool HasAdjustedColumn {
-			get { return adjustedColumn != -1; }
-		}
+        public int Column
+        {
+            get { return adjustedColumn == -1 ? column : adjustedColumn; }
+            protected set { column = value; }
+        }
 
-		// FIXME: make this private
-		internal bool HasAdjustedLine {
-			get { return adjustedLine != -1; }
-		}
+        public int OriginalLine
+        {
+            get { return line; }
+        }
 
-		public override void CopyFrom (BreakEvent ev)
-		{
-			base.CopyFrom (ev);
-			
-			Breakpoint bp = (Breakpoint) ev;
+        public int Line
+        {
+            get { return adjustedLine == -1 ? line : adjustedLine; }
+            protected set { line = value; }
+        }
 
-			fileName = bp.fileName;
-			column = bp.column;
-			line = bp.line;
-		}
-	}
+        public void SetColumn(int newColumn)
+        {
+            ResetAdjustedColumn();
+            column = newColumn;
+        }
 
-	public enum HitCountMode {
-		None,
-		LessThan,
-		LessThanOrEqualTo,
-		EqualTo,
-		GreaterThan,
-		GreaterThanOrEqualTo,
-		MultipleOf
-	}
+        public void SetLine(int newLine)
+        {
+            ResetAdjustedLine();
+            line = newLine;
+        }
 
-	[Flags]
-	public enum HitAction
-	{
-		None = 0x0,
-		Break = 0x1,
-		PrintExpression = 0x2,
-		CustomAction = 0x4,
-		PrintTrace = 0x8
-	}
-	
-	public delegate bool BreakEventHitHandler (string actionId, BreakEvent be);
+        internal void SetAdjustedColumn(int newColumn)
+        {
+            adjustedColumn = newColumn;
+        }
+
+        internal void SetAdjustedLine(int newLine)
+        {
+            adjustedLine = newLine;
+        }
+
+        // FIXME: make this private
+        internal void ResetAdjustedColumn()
+        {
+            adjustedColumn = -1;
+        }
+
+        // FIXME: make this private
+        internal void ResetAdjustedLine()
+        {
+            adjustedLine = -1;
+        }
+
+        public override bool Reset()
+        {
+            bool changed = base.Reset() || HasAdjustedLine || HasAdjustedColumn;
+
+            adjustedColumn = -1;
+            adjustedLine = -1;
+
+            return changed;
+        }
+
+        // FIXME: make this private
+        internal bool HasAdjustedColumn
+        {
+            get { return adjustedColumn != -1; }
+        }
+
+        // FIXME: make this private
+        internal bool HasAdjustedLine
+        {
+            get { return adjustedLine != -1; }
+        }
+
+        public override void CopyFrom(BreakEvent ev)
+        {
+            base.CopyFrom(ev);
+
+            Breakpoint bp = (Breakpoint)ev;
+
+            fileName = bp.fileName;
+            column = bp.column;
+            line = bp.line;
+        }
+    }
+
+    public enum HitCountMode
+    {
+        None,
+        LessThan,
+        LessThanOrEqualTo,
+        EqualTo,
+        GreaterThan,
+        GreaterThanOrEqualTo,
+        MultipleOf
+    }
+
+    [Flags]
+    public enum HitAction
+    {
+        None = 0x0,
+        Break = 0x1,
+        PrintExpression = 0x2,
+        CustomAction = 0x4,
+        PrintTrace = 0x8
+    }
+
+    public delegate bool BreakEventHitHandler(string actionId, BreakEvent be);
 }

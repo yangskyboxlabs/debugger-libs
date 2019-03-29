@@ -24,12 +24,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+using System;
+
 namespace Mono.Debugging.Backend
 {
-	public interface IRawValueString: IDebuggerBackendObject
-	{
-		string Substring (int index, int length);
-		string Value { get; }
-		int Length { get; }
-	}
+    public interface IRawValueString : IDebuggerBackendObject
+    {
+        string Substring(int index, int length);
+        string Value { get; }
+        int Length { get; }
+    }
 }

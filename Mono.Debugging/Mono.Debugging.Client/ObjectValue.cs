@@ -27,849 +27,922 @@
 //
 
 using System;
-using System.Threading;
 using System.Collections.Generic;
 using System.Linq;
-
+using System.Threading;
 using Mono.Debugging.Backend;
 
 namespace Mono.Debugging.Client
 {
-	[Serializable]
-	public class ObjectValue
-	{
-		ObjectPath path;
-		int arrayCount = -1;
-		bool isNull;
-		string name;
-		string value;
-		string typeName;
-		string displayValue;
-		string childSelector;
-		ObjectValueFlags flags;
-		IObjectValueSource source;
-		IObjectValueUpdater updater;
-		List<ObjectValue> children;
-		ManualResetEvent evaluatedEvent;
+    [Serializable]
+    public class ObjectValue
+    {
+        ObjectPath path;
+        int arrayCount = -1;
+        bool isNull;
+        string name;
+        string value;
+        string typeName;
+        string displayValue;
+        string childSelector;
+        ObjectValueFlags flags;
+        IObjectValueSource source;
+        IObjectValueUpdater updater;
+        List<ObjectValue> children;
+        ManualResetEvent evaluatedEvent;
 
-		[NonSerialized]
-		readonly object mutex = new object ();
+        [NonSerialized]
+        readonly object mutex = new object();
 
-		[NonSerialized]
-		UpdateCallback updateCallback;
-		
-		[NonSerialized]
-		EventHandler valueChanged;
-		
-		[NonSerialized]
-		StackFrame parentFrame;
-		
-		static ObjectValue Create (IObjectValueSource source, ObjectPath path, string typeName)
-		{
-			var val = new ObjectValue ();
-			val.typeName = typeName;
-			val.source = source;
-			val.path = path;
-			return val;
-		}
-		
-		public static ObjectValue CreateObject (IObjectValueSource source, ObjectPath path, string typeName, string value, ObjectValueFlags flags, ObjectValue[] children)
-		{
-			return CreateObject (source, path, typeName, new EvaluationResult (value), flags, children);
-		}
-		
-		public static ObjectValue CreateObject (IObjectValueSource source, ObjectPath path, string typeName, EvaluationResult value, ObjectValueFlags flags, ObjectValue[] children)
-		{
-			var val = Create (source, path, typeName);
-			val.flags = flags | ObjectValueFlags.Object;
-			val.displayValue = value.DisplayValue;
-			val.value = value.Value;
-			val.path = path;
+        [NonSerialized]
+        UpdateCallback updateCallback;
 
-			if (children != null) {
-				val.children = new List<ObjectValue> ();
-				val.children.AddRange (children);
-			}
+        [NonSerialized]
+        EventHandler valueChanged;
 
-			return val;
-		}
-		
-		public static ObjectValue CreateNullObject (IObjectValueSource source, string name, string typeName, ObjectValueFlags flags)
-		{
-			return CreateNullObject (source, new ObjectPath (name), typeName, flags);
-		}
-		
-		public static ObjectValue CreateNullObject (IObjectValueSource source, ObjectPath path, string typeName, ObjectValueFlags flags)
-		{
-			var val = Create (source, path, typeName);
-			val.flags = flags | ObjectValueFlags.Object;
-			val.value = "(null)";
-			val.isNull = true;
-			return val;
-		}
-		
-		public static ObjectValue CreatePrimitive (IObjectValueSource source, ObjectPath path, string typeName, EvaluationResult value, ObjectValueFlags flags)
-		{
-			var val = Create (source, path, typeName);
-			val.flags = flags | ObjectValueFlags.Primitive;
-			val.displayValue = value.DisplayValue;
-			val.value = value.Value;
-			return val;
-		}
-		
-		public static ObjectValue CreateArray (IObjectValueSource source, ObjectPath path, string typeName, int arrayCount, ObjectValueFlags flags, ObjectValue[] children)
-		{
-			var val = Create (source, path, typeName);
-			val.flags = flags | ObjectValueFlags.Array;
-			val.value = "[" + arrayCount + "]";
-			val.arrayCount = arrayCount;
+        [NonSerialized]
+        StackFrame parentFrame;
 
-			if (children != null && children.Length > 0) {
-				val.children = new List<ObjectValue> ();
-				val.children.AddRange (children);
-			}
+        static ObjectValue Create(IObjectValueSource source, ObjectPath path, string typeName)
+        {
+            var val = new ObjectValue();
+            val.typeName = typeName;
+            val.source = source;
+            val.path = path;
+            return val;
+        }
 
-			return val;
-		}
-		
-		public static ObjectValue CreateUnknown (IObjectValueSource source, ObjectPath path, string typeName)
-		{
-			var val = Create (source, path, typeName);
-			val.flags = ObjectValueFlags.Unknown | ObjectValueFlags.ReadOnly;
-			return val;
-		}
-		
-		public static ObjectValue CreateUnknown (string name)
-		{
-			return CreateUnknown (null, new ObjectPath (name), "");
-		}
-		
-		public static ObjectValue CreateError (IObjectValueSource source, ObjectPath path, string typeName, string value, ObjectValueFlags flags)
-		{
-			var val = Create (source, path, typeName);
-			val.flags = flags | ObjectValueFlags.Error;
-			val.value = value;
-			return val;
-		}
-		
-		public static ObjectValue CreateImplicitNotSupported (IObjectValueSource source, ObjectPath path, string typeName, ObjectValueFlags flags)
-		{
-			var val = Create (source, path, typeName);
-			val.flags = flags | ObjectValueFlags.ImplicitNotSupported;
-			val.value = "Implicit evaluation is disabled";
-			return val;
-		}
-		
-		public static ObjectValue CreateNotSupported (IObjectValueSource source, ObjectPath path, string typeName, string message, ObjectValueFlags flags)
-		{
-			var val = Create (source, path, typeName);
-			val.flags = flags | ObjectValueFlags.NotSupported;
-			val.value = message;
-			return val;
-		}
-		
-		public static ObjectValue CreateFatalError (string name, string message, ObjectValueFlags flags)
-		{
-			var val = new ObjectValue ();
-			val.flags = flags | ObjectValueFlags.Error;
-			val.value = message;
-			val.name = name;
-			return val;
-		}
-		
-		public static ObjectValue CreateEvaluating (IObjectValueUpdater updater, ObjectPath path, ObjectValueFlags flags)
-		{
-			var val = Create (null, path, null);
-			val.flags = flags | ObjectValueFlags.Evaluating;
-			val.updater = updater;
-			val.path = path;
-			return val;
-		}
+        public static ObjectValue CreateObject(IObjectValueSource source, ObjectPath path, string typeName, string value, ObjectValueFlags flags, ObjectValue[] children)
+        {
+            return CreateObject(source, path, typeName, new EvaluationResult(value), flags, children);
+        }
 
-		public static ObjectValue CreateShowMore ()
-		{
-			return new ObjectValue () {
-				flags = ObjectValueFlags.IEnumerable,
-				name = ""
-			};
-		}
-		
-		/// <summary>
-		/// Gets the flags of the value
-		/// </summary>
-		public ObjectValueFlags Flags {
-			get { return flags; }
-		}
+        public static ObjectValue CreateObject(IObjectValueSource source, ObjectPath path, string typeName, EvaluationResult value, ObjectValueFlags flags, ObjectValue[] children)
+        {
+            var val = Create(source, path, typeName);
+            val.flags = flags | ObjectValueFlags.Object;
+            val.displayValue = value.DisplayValue;
+            val.value = value.Value;
+            val.path = path;
 
-		/// <summary>
-		/// Name of the value (for example, the property name)
-		/// </summary>
-		public string Name {
-			get { return name ?? path[path.Length - 1]; }
-			set { name = value; }
-		}
+            if (children != null)
+            {
+                val.children = new List<ObjectValue>();
+                val.children.AddRange(children);
+            }
 
-		/// <summary>
-		/// Gets or sets the value of the object
-		/// </summary>
-		/// <value>
-		/// The value.
-		/// </value>
-		/// <exception cref='InvalidOperationException'>
-		/// Is thrown when trying to set a value on a read-only ObjectValue
-		/// </exception>
-		/// <remarks>
-		/// This value is a string representation of the ObjectValue. The content depends on several evaluation
-		/// options. For example, if ToString calls are enabled, this value will be the result of calling
-		/// ToString.
-		/// If the object is a primitive type, in general the Value will be an expression that represents the
-		/// value in the target language. For example, when debugging C#, if the property is an string, the value
-		/// will include the quotation marks and chars like '\' will be properly escaped.
-		/// If you need to get the real CLR value of the object, use GetRawValue.
-		/// </remarks>
-		public virtual string Value {
-			get {
-				return value;
-			}
-			set {
-				if (IsReadOnly || source == null)
-					throw new InvalidOperationException ("Value is not editable");
+            return val;
+        }
 
-				EvaluationResult res = source.SetValue (path, value, null);
-				if (res != null) {
-					this.value = res.Value;
-					displayValue = res.DisplayValue;
-					isNull = value == null;
-				}
-			}
-		}
+        public static ObjectValue CreateNullObject(IObjectValueSource source, string name, string typeName, ObjectValueFlags flags)
+        {
+            return CreateNullObject(source, new ObjectPath(name), typeName, flags);
+        }
 
-		/// <summary>
-		/// Gets or sets the display value of this object
-		/// </summary>
-		/// <remarks>
-		/// This method returns a string to be used when showing the value of this object.
-		/// In most cases, the Value and DisplayValue properties return the same text, but there are some cases
-		/// in which DisplayValue may return a more convenient textual representation of the value, which
-		/// may not be a valid target language expression.
-		/// For example in C#, an enum Value includes the full enum type name (e.g. "Gtk.ResponseType.OK"),
-		/// while DisplayValue only has the enum value name ("OK").
-		/// </remarks>
-		public string DisplayValue {
-			get { return displayValue ?? Value; }
-			set { displayValue = value; }
-		}
-		
-		/// <summary>
-		/// Sets the value of this object, using the default evaluation options
-		/// </summary>
-		public void SetValue (string value)
-		{
-			SetValue (value, parentFrame.DebuggerSession.EvaluationOptions);
-		}
-		
-		/// <summary>
-		/// Sets the value of this object, using the specified evaluation options
-		/// </summary>
-		/// <param name='value'>
-		/// The value
-		/// </param>
-		/// <param name='options'>
-		/// The options
-		/// </param>
-		/// <exception cref='InvalidOperationException'>
-		/// Is thrown if the value is read-only
-		/// </exception>
-		public void SetValue (string value, EvaluationOptions options)
-		{
-			if (IsReadOnly || source == null)
-				throw new InvalidOperationException ("Value is not editable");
-			EvaluationResult res = source.SetValue (path, value, options);
-			if (res != null) {
-				this.value = res.Value;
-				displayValue = res.DisplayValue;
-			}
-		}
-		
-		/// <summary>
-		/// Gets the raw value of this object
-		/// </summary>
-		/// <returns>
-		/// The raw value.
-		/// </returns>
-		/// <remarks>
-		/// This method can be used to get the CLR value of the object. For example, if this ObjectValue is
-		/// a property of type String, this method will return the System.String value of the property.
-		/// If this ObjectValue refers to an object instead of a primitive value, then a RawValue object
-		/// will be returned. RawValue can be used to get and set members of an object, and to call methods.
-		/// If this ObjectValue refers to an array, then a RawValueArray object will be returned.
-		/// </remarks>
-		public object GetRawValue ()
-		{
-			EvaluationOptions ops = parentFrame.DebuggerSession.EvaluationOptions.Clone ();
-			ops.EllipsizeStrings = false;
-			
-			return GetRawValue (ops);
-		}
-		
-		/// <summary>
-		/// Gets the raw value of this object
-		/// </summary>
-		/// <param name='options'>
-		/// The evaluation options
-		/// </param>
-		/// <returns>
-		/// The raw value.
-		/// </returns>
-		/// <remarks>
-		/// This method can be used to get the CLR value of the object. For example, if this ObjectValue is
-		/// a property of type String, this method will return the System.String value of the property.
-		/// If this ObjectValue refers to an object instead of a primitive value, then a RawValue object
-		/// will be returned. RawValue can be used to get and set members of an object, and to call methods.
-		/// If this ObjectValue refers to an array, then a RawValueArray object will be returned.
-		/// </remarks>
-		public object GetRawValue (EvaluationOptions options)
-		{
-			if (source == null && (IsEvaluating || IsEvaluatingGroup)) {
-				if (!WaitHandle.WaitOne (options.EvaluationTimeout)) {
-					throw new Mono.Debugging.Evaluation.TimeOutException ();
-				}
-			}
-			object res = source.GetRawValue (path, options);
-			IRawObject val = res as IRawObject;
-			if (val != null)
-				val.Connect (parentFrame.DebuggerSession, options);
-			return res;
-		}
-		
-		/// <summary>
-		/// Sets the raw value of this object
-		/// </summary>
-		/// <param name='value'>
-		/// The value
-		/// </param>
-		/// <remarks>
-		/// The provided value can be a primitive type, a RawValue object or a RawValueArray object.
-		/// </remarks>
-		public void SetRawValue (object value)
-		{
-			SetRawValue (value, parentFrame.DebuggerSession.EvaluationOptions);
-		}
-		
-		/// <summary>
-		/// Sets the raw value of this object
-		/// </summary>
-		/// <param name='value'>
-		/// The value
-		/// </param>
-		/// <param name='options'>
-		/// The evaluation options
-		/// </param>
-		/// <remarks>
-		/// The provided value can be a primitive type, a RawValue object or a RawValueArray object.
-		/// </remarks>
-		public void SetRawValue (object value, EvaluationOptions options)
-		{
-			if (source == null && (IsEvaluating || IsEvaluatingGroup)) {
-				if (!WaitHandle.WaitOne (options.EvaluationTimeout)) {
-					throw new Mono.Debugging.Evaluation.TimeOutException ();
-				}
-			}
-			source.SetRawValue (path, value, options);
-		}
-		
-		/// <summary>
-		/// Full name of the type of the object
-		/// </summary>
-		public string TypeName {
-			get { return typeName; }
-			set { typeName = value; }
-		}
-		
-		/// <summary>
-		/// Gets or sets the child selector.
-		/// </summary>
-		/// <remarks>
-		/// The child selector is an expression which can be concatenated to a parent expression to get this child.
-		/// For example, if this object is a reference to a field named 'foo' of an object, the child
-		/// selector is '.foo'.
-		/// </remarks>
-		public string ChildSelector {
-			get {
-				if (childSelector != null)
-					return childSelector;
+        public static ObjectValue CreateNullObject(IObjectValueSource source, ObjectPath path, string typeName, ObjectValueFlags flags)
+        {
+            var val = Create(source, path, typeName);
+            val.flags = flags | ObjectValueFlags.Object;
+            val.value = "(null)";
+            val.isNull = true;
+            return val;
+        }
 
-				if ((flags & ObjectValueFlags.ArrayElement) != 0)
-					return Name;
+        public static ObjectValue CreatePrimitive(IObjectValueSource source, ObjectPath path, string typeName, EvaluationResult value, ObjectValueFlags flags)
+        {
+            var val = Create(source, path, typeName);
+            val.flags = flags | ObjectValueFlags.Primitive;
+            val.displayValue = value.DisplayValue;
+            val.value = value.Value;
+            return val;
+        }
 
-				return "." + Name;
-			}
-			set { childSelector = value; }
-		}
-		
-		/// <summary>
-		/// Gets a value indicating whether this object has children.
-		/// </summary>
-		/// <value>
-		/// <c>true</c> if this instance has children; otherwise, <c>false</c>.
-		/// </value>
-		public bool HasChildren {
-			get {
-				if (isNull)
-					return false;
-				if (IsEvaluating)
-					return false;
-				if (children != null)
-					return children.Count > 0;
-				if (source == null)
-					return false;
-				if (IsArray)
-					return arrayCount > 0;
-				if (IsObject)
-					return true;
-				return false;
-			}
-		}
+        public static ObjectValue CreateArray(IObjectValueSource source, ObjectPath path, string typeName, int arrayCount, ObjectValueFlags flags, ObjectValue[] children)
+        {
+            var val = Create(source, path, typeName);
+            val.flags = flags | ObjectValueFlags.Array;
+            val.value = "[" + arrayCount + "]";
+            val.arrayCount = arrayCount;
 
-		/// <summary>
-		/// Gets a child value
-		/// </summary>
-		/// <returns>
-		/// The child.
-		/// </returns>
-		/// <param name='name'>
-		/// Name of the member
-		/// </param>
-		/// <remarks>
-		/// This method can be used to get a member of an object (such as a field or property)
-		/// </remarks>
-		public ObjectValue GetChild (string name)
-		{
-			return GetChild (name, parentFrame.DebuggerSession.EvaluationOptions);
-		}
-		
-		/// <summary>
-		/// Gets a child value
-		/// </summary>
-		/// <returns>
-		/// The child.
-		/// </returns>
-		/// <param name='name'>
-		/// Name of the member
-		/// </param>
-		/// <param name='options'>
-		/// Options to be used to evaluate the child
-		/// </param>
-		/// <remarks>
-		/// This method can be used to get a member of an object (such as a field or property)
-		/// </remarks>
-		public ObjectValue GetChild (string name, EvaluationOptions options)
-		{
-			if (IsArray)
-				throw new InvalidOperationException ("Object is an array.");
-			if (IsEvaluating)
-				return null;
-			
-			if (children == null) {
-				children = new List<ObjectValue> ();
-				if (source != null) {
-					try {
-						ObjectValue[] cs = source.GetChildren (path, -1, -1, options);
-						ConnectCallbacks (parentFrame, cs);
-						children.AddRange (cs);
-					} catch (Exception ex) {
-						children = null;
-						return CreateFatalError ("", ex.Message, ObjectValueFlags.ReadOnly);
-					}
-				}
-			}
-			
-			foreach (ObjectValue ob in children) {
-				if (ob.Name == name)
-					return ob;
-			}
-			
-			return null;
-		}
-		
-		/// <summary>
-		/// Gets all children of the object
-		/// </summary>
-		/// <returns>
-		/// An array of all child values
-		/// </returns>
-		public ObjectValue[] GetAllChildren ()
-		{
-			return GetAllChildren (parentFrame.DebuggerSession.EvaluationOptions);
-		}
-		
-		/// <summary>
-		/// Gets all children of the object
-		/// </summary>
-		/// <returns>
-		/// An array of all child values
-		/// </returns>
-		/// <param name='options'>
-		/// Options to be used to evaluate the children
-		/// </param>
-		public ObjectValue[] GetAllChildren (EvaluationOptions options)
-		{
-			if (IsEvaluating)
-				return new ObjectValue[0];
-			
-			if (IsArray) {
-				GetArrayItem (arrayCount - 1);
-				return children.ToArray ();
-			}
+            if (children != null && children.Length > 0)
+            {
+                val.children = new List<ObjectValue>();
+                val.children.AddRange(children);
+            }
 
-			if (children == null) {
-				children = new List<ObjectValue> ();
-				if (source != null) {
-					try {
-						ObjectValue[] cs = source.GetChildren (path, -1, -1, options);
-						ConnectCallbacks (parentFrame, cs);
-						children.AddRange (cs);
-					} catch (Exception ex) {
-						if (parentFrame != null)
-							parentFrame.DebuggerSession.OnDebuggerOutput (true, ex.ToString ());
-						children.Add (CreateFatalError ("", ex.Message, ObjectValueFlags.ReadOnly));
-					}
-				}
-			}
+            return val;
+        }
 
-			return children.ToArray ();
-		}
+        public static ObjectValue CreateUnknown(IObjectValueSource source, ObjectPath path, string typeName)
+        {
+            var val = Create(source, path, typeName);
+            val.flags = ObjectValueFlags.Unknown | ObjectValueFlags.ReadOnly;
+            return val;
+        }
 
-		public ObjectValue[] GetRangeOfChildren (int index, int count)
-		{
-			return GetRangeOfChildren (index, count, parentFrame.DebuggerSession.EvaluationOptions);
-		}
+        public static ObjectValue CreateUnknown(string name)
+        {
+            return CreateUnknown(null, new ObjectPath(name), "");
+        }
 
-		public ObjectValue[] GetRangeOfChildren (int index, int count, EvaluationOptions options)
-		{
-			if (IsEvaluating)
-				return new ObjectValue[0];
+        public static ObjectValue CreateError(IObjectValueSource source, ObjectPath path, string typeName, string value, ObjectValueFlags flags)
+        {
+            var val = Create(source, path, typeName);
+            val.flags = flags | ObjectValueFlags.Error;
+            val.value = value;
+            return val;
+        }
 
-			if (IsArray) {
-				GetArrayItem (arrayCount - 1);
-				if (index >= ArrayCount)
-					return new ObjectValue[0];
-				return children.Skip (index).Take (System.Math.Min (count, ArrayCount - index)).ToArray ();
-			}
+        public static ObjectValue CreateImplicitNotSupported(IObjectValueSource source, ObjectPath path, string typeName, ObjectValueFlags flags)
+        {
+            var val = Create(source, path, typeName);
+            val.flags = flags | ObjectValueFlags.ImplicitNotSupported;
+            val.value = "Implicit evaluation is disabled";
+            return val;
+        }
 
-			if (children == null) {
-				children = new List<ObjectValue> ();
-			}
-			if (children.Count < index + count) {
-				if (source != null) {
-					try {
-						ObjectValue[] cs = source.GetChildren (path, children.Count, index + count, options);
-						ConnectCallbacks (parentFrame, cs);
-						children.AddRange (cs);
-					} catch (Exception ex) {
-						if (parentFrame != null)
-							parentFrame.DebuggerSession.OnDebuggerOutput (true, ex.ToString ());
-						children.Add (CreateFatalError ("", ex.Message, ObjectValueFlags.ReadOnly));
-					}
-				}
-			}
+        public static ObjectValue CreateNotSupported(IObjectValueSource source, ObjectPath path, string typeName, string message, ObjectValueFlags flags)
+        {
+            var val = Create(source, path, typeName);
+            val.flags = flags | ObjectValueFlags.NotSupported;
+            val.value = message;
+            return val;
+        }
 
-			if (index >= children.Count)
-				return new ObjectValue[0];
+        public static ObjectValue CreateFatalError(string name, string message, ObjectValueFlags flags)
+        {
+            var val = new ObjectValue();
+            val.flags = flags | ObjectValueFlags.Error;
+            val.value = message;
+            val.name = name;
+            return val;
+        }
 
-			return children.Skip (index).Take (System.Math.Min (count, children.Count - index)).ToArray ();
-		}
-		
-		/// <summary>
-		/// Gets an item of an array
-		/// </summary>
-		/// <returns>
-		/// The array item.
-		/// </returns>
-		/// <param name='index'>
-		/// Item index
-		/// </param>
-		/// <exception cref='InvalidOperationException'>
-		/// Is thrown if this object is not an array (IsArray returns false)
-		/// </exception>
-		public ObjectValue GetArrayItem (int index)
-		{
-			return GetArrayItem (index, parentFrame.DebuggerSession.EvaluationOptions);
-		}
-		
-		/// <summary>
-		/// Gets an item of an array
-		/// </summary>
-		/// <returns>
-		/// The array item.
-		/// </returns>
-		/// <param name='index'>
-		/// Item index
-		/// </param>
-		/// <param name='options'>
-		/// Options to be used to evaluate the item
-		/// </param>
-		/// <exception cref='InvalidOperationException'>
-		/// Is thrown if this object is not an array (IsArray returns false)
-		/// </exception>
-		public ObjectValue GetArrayItem (int index, EvaluationOptions options)
-		{
-			if (!IsArray)
-				throw new InvalidOperationException ("Object is not an array.");
+        public static ObjectValue CreateEvaluating(IObjectValueUpdater updater, ObjectPath path, ObjectValueFlags flags)
+        {
+            var val = Create(null, path, null);
+            val.flags = flags | ObjectValueFlags.Evaluating;
+            val.updater = updater;
+            val.path = path;
+            return val;
+        }
 
-			if (index >= arrayCount || index < 0 || IsEvaluating)
-				throw new IndexOutOfRangeException ();
-			
-			if (children == null)
-				children = new List<ObjectValue> ();
+        public static ObjectValue CreateShowMore()
+        {
+            return new ObjectValue()
+            {
+                flags = ObjectValueFlags.IEnumerable,
+                name = ""
+            };
+        }
 
-			if (index >= children.Count) {
-				int nc = (index + 50);
+        /// <summary>
+        /// Gets the flags of the value
+        /// </summary>
+        public ObjectValueFlags Flags
+        {
+            get { return flags; }
+        }
 
-				if (nc > arrayCount)
-					nc = arrayCount;
+        /// <summary>
+        /// Name of the value (for example, the property name)
+        /// </summary>
+        public string Name
+        {
+            get { return name ?? path[path.Length - 1]; }
+            set { name = value; }
+        }
 
-				nc = nc - children.Count;
+        /// <summary>
+        /// Gets or sets the value of the object
+        /// </summary>
+        /// <value>
+        /// The value.
+        /// </value>
+        /// <exception cref='InvalidOperationException'>
+        /// Is thrown when trying to set a value on a read-only ObjectValue
+        /// </exception>
+        /// <remarks>
+        /// This value is a string representation of the ObjectValue. The content depends on several evaluation
+        /// options. For example, if ToString calls are enabled, this value will be the result of calling
+        /// ToString.
+        /// If the object is a primitive type, in general the Value will be an expression that represents the
+        /// value in the target language. For example, when debugging C#, if the property is an string, the value
+        /// will include the quotation marks and chars like '\' will be properly escaped.
+        /// If you need to get the real CLR value of the object, use GetRawValue.
+        /// </remarks>
+        public virtual string Value
+        {
+            get { return value; }
+            set
+            {
+                if (IsReadOnly || source == null)
+                    throw new InvalidOperationException("Value is not editable");
 
-				try {
-					var items = source.GetChildren (path, children.Count, nc, options);
-					ConnectCallbacks (parentFrame, items);
-					children.AddRange (items);
-				} catch (Exception ex) {
-					return CreateFatalError ("", ex.Message, ObjectValueFlags.ArrayElement | ObjectValueFlags.ReadOnly);
-				}
-			}
+                EvaluationResult res = source.SetValue(path, value, null);
+                if (res != null)
+                {
+                    this.value = res.Value;
+                    displayValue = res.DisplayValue;
+                    isNull = value == null;
+                }
+            }
+        }
 
-			return children [index];
-		}
-		
-		/// <summary>
-		/// Gets the number of items of an array
-		/// </summary>
-		/// <exception cref='InvalidOperationException'>
-		/// Is thrown if this object is not an array (IsArray returns false)
-		/// </exception>
-		public int ArrayCount {
-			get {
-				if (!IsArray)
-					throw new InvalidOperationException ("Object is not an array.");
+        /// <summary>
+        /// Gets or sets the display value of this object
+        /// </summary>
+        /// <remarks>
+        /// This method returns a string to be used when showing the value of this object.
+        /// In most cases, the Value and DisplayValue properties return the same text, but there are some cases
+        /// in which DisplayValue may return a more convenient textual representation of the value, which
+        /// may not be a valid target language expression.
+        /// For example in C#, an enum Value includes the full enum type name (e.g. "Gtk.ResponseType.OK"),
+        /// while DisplayValue only has the enum value name ("OK").
+        /// </remarks>
+        public string DisplayValue
+        {
+            get { return displayValue ?? Value; }
+            set { displayValue = value; }
+        }
 
-				if (IsEvaluating)
-					return 0;
+        /// <summary>
+        /// Sets the value of this object, using the default evaluation options
+        /// </summary>
+        public void SetValue(string value)
+        {
+            SetValue(value, parentFrame.DebuggerSession.EvaluationOptions);
+        }
 
-				return arrayCount; 
-			}
-		}
+        /// <summary>
+        /// Sets the value of this object, using the specified evaluation options
+        /// </summary>
+        /// <param name='value'>
+        /// The value
+        /// </param>
+        /// <param name='options'>
+        /// The options
+        /// </param>
+        /// <exception cref='InvalidOperationException'>
+        /// Is thrown if the value is read-only
+        /// </exception>
+        public void SetValue(string value, EvaluationOptions options)
+        {
+            if (IsReadOnly || source == null)
+                throw new InvalidOperationException("Value is not editable");
+            EvaluationResult res = source.SetValue(path, value, options);
+            if (res != null)
+            {
+                this.value = res.Value;
+                displayValue = res.DisplayValue;
+            }
+        }
 
-		public bool IsNull {
-			get { return isNull; }
-		}
+        /// <summary>
+        /// Gets the raw value of this object
+        /// </summary>
+        /// <returns>
+        /// The raw value.
+        /// </returns>
+        /// <remarks>
+        /// This method can be used to get the CLR value of the object. For example, if this ObjectValue is
+        /// a property of type String, this method will return the System.String value of the property.
+        /// If this ObjectValue refers to an object instead of a primitive value, then a RawValue object
+        /// will be returned. RawValue can be used to get and set members of an object, and to call methods.
+        /// If this ObjectValue refers to an array, then a RawValueArray object will be returned.
+        /// </remarks>
+        public object GetRawValue()
+        {
+            EvaluationOptions ops = parentFrame.DebuggerSession.EvaluationOptions.Clone();
+            ops.EllipsizeStrings = false;
 
-		public bool IsReadOnly {
-			get { return HasFlag (ObjectValueFlags.ReadOnly); }
-		}
-		
-		public bool IsArray {
-			get { return HasFlag (ObjectValueFlags.Array); }
-		}
-		
-		public bool IsObject {
-			get { return HasFlag (ObjectValueFlags.Object); }
-		}
-		
-		public bool IsPrimitive {
-			get { return HasFlag (ObjectValueFlags.Primitive); }
-		}
-		
-		public bool IsUnknown {
-			get { return HasFlag (ObjectValueFlags.Unknown); }
-		}
+            return GetRawValue(ops);
+        }
 
-		public bool IsNotSupported {
-			get { return HasFlag (ObjectValueFlags.NotSupported); }
-		}
+        /// <summary>
+        /// Gets the raw value of this object
+        /// </summary>
+        /// <param name='options'>
+        /// The evaluation options
+        /// </param>
+        /// <returns>
+        /// The raw value.
+        /// </returns>
+        /// <remarks>
+        /// This method can be used to get the CLR value of the object. For example, if this ObjectValue is
+        /// a property of type String, this method will return the System.String value of the property.
+        /// If this ObjectValue refers to an object instead of a primitive value, then a RawValue object
+        /// will be returned. RawValue can be used to get and set members of an object, and to call methods.
+        /// If this ObjectValue refers to an array, then a RawValueArray object will be returned.
+        /// </remarks>
+        public object GetRawValue(EvaluationOptions options)
+        {
+            if (source == null && (IsEvaluating || IsEvaluatingGroup))
+            {
+                if (!WaitHandle.WaitOne(options.EvaluationTimeout))
+                {
+                    throw new Mono.Debugging.Evaluation.TimeOutException();
+                }
+            }
 
-		public bool IsImplicitNotSupported {
-			get { return HasFlag (ObjectValueFlags.ImplicitNotSupported); }
-		}
-		
-		public bool IsError {
-			get { return HasFlag (ObjectValueFlags.Error); }
-		}
+            object res = source.GetRawValue(path, options);
+            IRawObject val = res as IRawObject;
+            if (val != null)
+                val.Connect(parentFrame.DebuggerSession, options);
+            return res;
+        }
 
-		public bool IsEvaluating {
-			get { return HasFlag (ObjectValueFlags.Evaluating); }
-		}
+        /// <summary>
+        /// Sets the raw value of this object
+        /// </summary>
+        /// <param name='value'>
+        /// The value
+        /// </param>
+        /// <remarks>
+        /// The provided value can be a primitive type, a RawValue object or a RawValueArray object.
+        /// </remarks>
+        public void SetRawValue(object value)
+        {
+            SetRawValue(value, parentFrame.DebuggerSession.EvaluationOptions);
+        }
 
-		public bool IsEvaluatingGroup {
-			get { return HasFlag (ObjectValueFlags.EvaluatingGroup); }
-		}
-		
-		public bool CanRefresh {
-			get { return source != null && !HasFlag (ObjectValueFlags.NoRefresh); }
-		}
-		
-		public bool HasFlag (ObjectValueFlags flag)
-		{
-			return (flags & flag) != 0;
-		}
+        /// <summary>
+        /// Sets the raw value of this object
+        /// </summary>
+        /// <param name='value'>
+        /// The value
+        /// </param>
+        /// <param name='options'>
+        /// The evaluation options
+        /// </param>
+        /// <remarks>
+        /// The provided value can be a primitive type, a RawValue object or a RawValueArray object.
+        /// </remarks>
+        public void SetRawValue(object value, EvaluationOptions options)
+        {
+            if (source == null && (IsEvaluating || IsEvaluatingGroup))
+            {
+                if (!WaitHandle.WaitOne(options.EvaluationTimeout))
+                {
+                    throw new Mono.Debugging.Evaluation.TimeOutException();
+                }
+            }
 
-		public event EventHandler ValueChanged {
-			add {
-				lock (mutex) {
-					if (IsEvaluating)
-						valueChanged += value;
-					else
-						value (this, EventArgs.Empty);
-				}
-			}
-			remove {
-				lock (mutex) {
-					valueChanged -= value;
-				}
-			}
-		}
-		
-		/// <summary>
-		/// Refreshes the value of this object
-		/// </summary>
-		/// <remarks>
-		/// This method can be called to get a more up-to-date value for this object.
-		/// </remarks>
-		public void Refresh ()
-		{
-			Refresh (parentFrame.DebuggerSession.EvaluationOptions);
-		}
-		
-		/// <summary>
-		/// Refreshes the value of this object
-		/// </summary>
-		/// <remarks>
-		/// This method can be called to get a more up-to-date value for this object.
-		/// </remarks>
-		public void Refresh (EvaluationOptions options)
-		{
-			if (!CanRefresh)
-				return;
+            source.SetRawValue(path, value, options);
+        }
 
-			var val = source.GetValue (path, options);
-			UpdateFrom (val, false);
-		}
+        /// <summary>
+        /// Full name of the type of the object
+        /// </summary>
+        public string TypeName
+        {
+            get { return typeName; }
+            set { typeName = value; }
+        }
 
-		/// <summary>
-		/// Gets a wait handle which can be used to wait for the evaluation of this object to end
-		/// </summary>
-		/// <value>
-		/// The wait handle.
-		/// </value>
-		public WaitHandle WaitHandle {
-			get {
-				lock (mutex) {
-					if (evaluatedEvent == null)
-						evaluatedEvent = new ManualResetEvent (!IsEvaluating);
-					return evaluatedEvent;
-				}
-			}
-		}
+        /// <summary>
+        /// Gets or sets the child selector.
+        /// </summary>
+        /// <remarks>
+        /// The child selector is an expression which can be concatenated to a parent expression to get this child.
+        /// For example, if this object is a reference to a field named 'foo' of an object, the child
+        /// selector is '.foo'.
+        /// </remarks>
+        public string ChildSelector
+        {
+            get
+            {
+                if (childSelector != null)
+                    return childSelector;
 
-		internal IObjectValueUpdater Updater {
-			get { return updater; }
-		}
+                if ((flags & ObjectValueFlags.ArrayElement) != 0)
+                    return Name;
 
-		internal void UpdateFrom (ObjectValue val, bool notify)
-		{
-			lock (mutex) {
-				arrayCount = val.arrayCount;
-				if (val.name != null)
-					name = val.name;
-				value = val.value;
-				displayValue = val.displayValue;
-				typeName = val.typeName;
-				flags = val.flags;
-				source = val.source;
-				children = val.children;
-				path = val.path;
-				updater = val.updater;
-				ConnectCallbacks (parentFrame, this);
-				if (evaluatedEvent != null)
-					evaluatedEvent.Set ();
-				if (notify && valueChanged != null)
-					valueChanged (this, EventArgs.Empty);
-			}
-		}
+                return "." + Name;
+            }
+            set { childSelector = value; }
+        }
 
-		internal UpdateCallback GetUpdateCallback ()
-		{
-			if (IsEvaluating) {
-				if (updateCallback == null)
-					updateCallback = new UpdateCallback (new UpdateCallbackProxy (this), path);
-				return updateCallback;
-			}
+        /// <summary>
+        /// Gets a value indicating whether this object has children.
+        /// </summary>
+        /// <value>
+        /// <c>true</c> if this instance has children; otherwise, <c>false</c>.
+        /// </value>
+        public bool HasChildren
+        {
+            get
+            {
+                if (isNull)
+                    return false;
+                if (IsEvaluating)
+                    return false;
+                if (children != null)
+                    return children.Count > 0;
+                if (source == null)
+                    return false;
+                if (IsArray)
+                    return arrayCount > 0;
+                if (IsObject)
+                    return true;
+                return false;
+            }
+        }
 
-			return null;
-		}
+        /// <summary>
+        /// Gets a child value
+        /// </summary>
+        /// <returns>
+        /// The child.
+        /// </returns>
+        /// <param name='name'>
+        /// Name of the member
+        /// </param>
+        /// <remarks>
+        /// This method can be used to get a member of an object (such as a field or property)
+        /// </remarks>
+        public ObjectValue GetChild(string name)
+        {
+            return GetChild(name, parentFrame.DebuggerSession.EvaluationOptions);
+        }
 
-		~ObjectValue ()
-		{
-			if (updateCallback != null)
-				System.Runtime.Remoting.RemotingServices.Disconnect ((UpdateCallbackProxy)updateCallback.Callback);
-		}
-		
-		internal static void ConnectCallbacks (StackFrame parentFrame, params ObjectValue[] values)
-		{
-			Dictionary<IObjectValueUpdater, List<UpdateCallback>> callbacks = null;
-			var valueList = new List<ObjectValue> (values);
+        /// <summary>
+        /// Gets a child value
+        /// </summary>
+        /// <returns>
+        /// The child.
+        /// </returns>
+        /// <param name='name'>
+        /// Name of the member
+        /// </param>
+        /// <param name='options'>
+        /// Options to be used to evaluate the child
+        /// </param>
+        /// <remarks>
+        /// This method can be used to get a member of an object (such as a field or property)
+        /// </remarks>
+        public ObjectValue GetChild(string name, EvaluationOptions options)
+        {
+            if (IsArray)
+                throw new InvalidOperationException("Object is an array.");
+            if (IsEvaluating)
+                return null;
 
-			for (int n = 0; n < valueList.Count; n++) {
-				var val = valueList [n];
-				val.source = parentFrame.DebuggerSession.WrapDebuggerObject (val.source);
-				val.updater = parentFrame.DebuggerSession.WrapDebuggerObject (val.updater);
-				val.parentFrame = parentFrame;
+            if (children == null)
+            {
+                children = new List<ObjectValue>();
+                if (source != null)
+                {
+                    try
+                    {
+                        ObjectValue[] cs = source.GetChildren(path, -1, -1, options);
+                        ConnectCallbacks(parentFrame, cs);
+                        children.AddRange(cs);
+                    }
+                    catch (Exception ex)
+                    {
+                        children = null;
+                        return CreateFatalError("", ex.Message, ObjectValueFlags.ReadOnly);
+                    }
+                }
+            }
 
-				UpdateCallback cb = val.GetUpdateCallback ();
-				if (cb != null) {
-					if (callbacks == null)
-						callbacks = new Dictionary<IObjectValueUpdater, List<UpdateCallback>> ();
+            foreach (ObjectValue ob in children)
+            {
+                if (ob.Name == name)
+                    return ob;
+            }
 
-					List<UpdateCallback> list;
-					if (!callbacks.TryGetValue (val.Updater, out list)) {
-						list = new List<UpdateCallback> ();
-						callbacks [val.Updater] = list;
-					}
+            return null;
+        }
 
-					list.Add (cb);
-				}
+        /// <summary>
+        /// Gets all children of the object
+        /// </summary>
+        /// <returns>
+        /// An array of all child values
+        /// </returns>
+        public ObjectValue[] GetAllChildren()
+        {
+            return GetAllChildren(parentFrame.DebuggerSession.EvaluationOptions);
+        }
 
-				if (val.children != null)
-					valueList.AddRange (val.children);
-			}
+        /// <summary>
+        /// Gets all children of the object
+        /// </summary>
+        /// <returns>
+        /// An array of all child values
+        /// </returns>
+        /// <param name='options'>
+        /// Options to be used to evaluate the children
+        /// </param>
+        public ObjectValue[] GetAllChildren(EvaluationOptions options)
+        {
+            if (IsEvaluating)
+                return new ObjectValue[0];
 
-			if (callbacks != null) {
-				// Do the callback connection in a background thread
-				ThreadPool.QueueUserWorkItem (delegate {
-					foreach (KeyValuePair<IObjectValueUpdater, List<UpdateCallback>> cbs in callbacks) {
-						cbs.Key.RegisterUpdateCallbacks (cbs.Value.ToArray ());
-					}
-				});
-			}
-		}
-	}
+            if (IsArray)
+            {
+                GetArrayItem(arrayCount - 1);
+                return children.ToArray();
+            }
 
-	class UpdateCallbackProxy: MarshalByRefObject, IObjectValueUpdateCallback
-	{
-		readonly WeakReference valRef;
-		
-		public void UpdateValue (ObjectValue newValue)
-		{
-			var val = valRef.Target as ObjectValue;
+            if (children == null)
+            {
+                children = new List<ObjectValue>();
+                if (source != null)
+                {
+                    try
+                    {
+                        ObjectValue[] cs = source.GetChildren(path, -1, -1, options);
+                        ConnectCallbacks(parentFrame, cs);
+                        children.AddRange(cs);
+                    }
+                    catch (Exception ex)
+                    {
+                        if (parentFrame != null)
+                            parentFrame.DebuggerSession.OnDebuggerOutput(true, ex.ToString());
+                        children.Add(CreateFatalError("", ex.Message, ObjectValueFlags.ReadOnly));
+                    }
+                }
+            }
 
-			if (val != null)
-				val.UpdateFrom (newValue, true);
-		}
-		
-		public UpdateCallbackProxy (ObjectValue val)
-		{
-			valRef = new WeakReference (val);
-		}
-	}
+            return children.ToArray();
+        }
+
+        public ObjectValue[] GetRangeOfChildren(int index, int count)
+        {
+            return GetRangeOfChildren(index, count, parentFrame.DebuggerSession.EvaluationOptions);
+        }
+
+        public ObjectValue[] GetRangeOfChildren(int index, int count, EvaluationOptions options)
+        {
+            if (IsEvaluating)
+                return new ObjectValue[0];
+
+            if (IsArray)
+            {
+                GetArrayItem(arrayCount - 1);
+                if (index >= ArrayCount)
+                    return new ObjectValue[0];
+                return children.Skip(index).Take(System.Math.Min(count, ArrayCount - index)).ToArray();
+            }
+
+            if (children == null)
+            {
+                children = new List<ObjectValue>();
+            }
+
+            if (children.Count < index + count)
+            {
+                if (source != null)
+                {
+                    try
+                    {
+                        ObjectValue[] cs = source.GetChildren(path, children.Count, index + count, options);
+                        ConnectCallbacks(parentFrame, cs);
+                        children.AddRange(cs);
+                    }
+                    catch (Exception ex)
+                    {
+                        if (parentFrame != null)
+                            parentFrame.DebuggerSession.OnDebuggerOutput(true, ex.ToString());
+                        children.Add(CreateFatalError("", ex.Message, ObjectValueFlags.ReadOnly));
+                    }
+                }
+            }
+
+            if (index >= children.Count)
+                return new ObjectValue[0];
+
+            return children.Skip(index).Take(System.Math.Min(count, children.Count - index)).ToArray();
+        }
+
+        /// <summary>
+        /// Gets an item of an array
+        /// </summary>
+        /// <returns>
+        /// The array item.
+        /// </returns>
+        /// <param name='index'>
+        /// Item index
+        /// </param>
+        /// <exception cref='InvalidOperationException'>
+        /// Is thrown if this object is not an array (IsArray returns false)
+        /// </exception>
+        public ObjectValue GetArrayItem(int index)
+        {
+            return GetArrayItem(index, parentFrame.DebuggerSession.EvaluationOptions);
+        }
+
+        /// <summary>
+        /// Gets an item of an array
+        /// </summary>
+        /// <returns>
+        /// The array item.
+        /// </returns>
+        /// <param name='index'>
+        /// Item index
+        /// </param>
+        /// <param name='options'>
+        /// Options to be used to evaluate the item
+        /// </param>
+        /// <exception cref='InvalidOperationException'>
+        /// Is thrown if this object is not an array (IsArray returns false)
+        /// </exception>
+        public ObjectValue GetArrayItem(int index, EvaluationOptions options)
+        {
+            if (!IsArray)
+                throw new InvalidOperationException("Object is not an array.");
+
+            if (index >= arrayCount || index < 0 || IsEvaluating)
+                throw new IndexOutOfRangeException();
+
+            if (children == null)
+                children = new List<ObjectValue>();
+
+            if (index >= children.Count)
+            {
+                int nc = (index + 50);
+
+                if (nc > arrayCount)
+                    nc = arrayCount;
+
+                nc = nc - children.Count;
+
+                try
+                {
+                    var items = source.GetChildren(path, children.Count, nc, options);
+                    ConnectCallbacks(parentFrame, items);
+                    children.AddRange(items);
+                }
+                catch (Exception ex)
+                {
+                    return CreateFatalError("", ex.Message, ObjectValueFlags.ArrayElement | ObjectValueFlags.ReadOnly);
+                }
+            }
+
+            return children[index];
+        }
+
+        /// <summary>
+        /// Gets the number of items of an array
+        /// </summary>
+        /// <exception cref='InvalidOperationException'>
+        /// Is thrown if this object is not an array (IsArray returns false)
+        /// </exception>
+        public int ArrayCount
+        {
+            get
+            {
+                if (!IsArray)
+                    throw new InvalidOperationException("Object is not an array.");
+
+                if (IsEvaluating)
+                    return 0;
+
+                return arrayCount;
+            }
+        }
+
+        public bool IsNull
+        {
+            get { return isNull; }
+        }
+
+        public bool IsReadOnly
+        {
+            get { return HasFlag(ObjectValueFlags.ReadOnly); }
+        }
+
+        public bool IsArray
+        {
+            get { return HasFlag(ObjectValueFlags.Array); }
+        }
+
+        public bool IsObject
+        {
+            get { return HasFlag(ObjectValueFlags.Object); }
+        }
+
+        public bool IsPrimitive
+        {
+            get { return HasFlag(ObjectValueFlags.Primitive); }
+        }
+
+        public bool IsUnknown
+        {
+            get { return HasFlag(ObjectValueFlags.Unknown); }
+        }
+
+        public bool IsNotSupported
+        {
+            get { return HasFlag(ObjectValueFlags.NotSupported); }
+        }
+
+        public bool IsImplicitNotSupported
+        {
+            get { return HasFlag(ObjectValueFlags.ImplicitNotSupported); }
+        }
+
+        public bool IsError
+        {
+            get { return HasFlag(ObjectValueFlags.Error); }
+        }
+
+        public bool IsEvaluating
+        {
+            get { return HasFlag(ObjectValueFlags.Evaluating); }
+        }
+
+        public bool IsEvaluatingGroup
+        {
+            get { return HasFlag(ObjectValueFlags.EvaluatingGroup); }
+        }
+
+        public bool CanRefresh
+        {
+            get { return source != null && !HasFlag(ObjectValueFlags.NoRefresh); }
+        }
+
+        public bool HasFlag(ObjectValueFlags flag)
+        {
+            return (flags & flag) != 0;
+        }
+
+        public event EventHandler ValueChanged
+        {
+            add
+            {
+                lock (mutex)
+                {
+                    if (IsEvaluating)
+                        valueChanged += value;
+                    else
+                        value(this, EventArgs.Empty);
+                }
+            }
+            remove
+            {
+                lock (mutex)
+                {
+                    valueChanged -= value;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Refreshes the value of this object
+        /// </summary>
+        /// <remarks>
+        /// This method can be called to get a more up-to-date value for this object.
+        /// </remarks>
+        public void Refresh()
+        {
+            Refresh(parentFrame.DebuggerSession.EvaluationOptions);
+        }
+
+        /// <summary>
+        /// Refreshes the value of this object
+        /// </summary>
+        /// <remarks>
+        /// This method can be called to get a more up-to-date value for this object.
+        /// </remarks>
+        public void Refresh(EvaluationOptions options)
+        {
+            if (!CanRefresh)
+                return;
+
+            var val = source.GetValue(path, options);
+            UpdateFrom(val, false);
+        }
+
+        /// <summary>
+        /// Gets a wait handle which can be used to wait for the evaluation of this object to end
+        /// </summary>
+        /// <value>
+        /// The wait handle.
+        /// </value>
+        public WaitHandle WaitHandle
+        {
+            get
+            {
+                lock (mutex)
+                {
+                    if (evaluatedEvent == null)
+                        evaluatedEvent = new ManualResetEvent(!IsEvaluating);
+                    return evaluatedEvent;
+                }
+            }
+        }
+
+        internal IObjectValueUpdater Updater
+        {
+            get { return updater; }
+        }
+
+        internal void UpdateFrom(ObjectValue val, bool notify)
+        {
+            lock (mutex)
+            {
+                arrayCount = val.arrayCount;
+                if (val.name != null)
+                    name = val.name;
+                value = val.value;
+                displayValue = val.displayValue;
+                typeName = val.typeName;
+                flags = val.flags;
+                source = val.source;
+                children = val.children;
+                path = val.path;
+                updater = val.updater;
+                ConnectCallbacks(parentFrame, this);
+                if (evaluatedEvent != null)
+                    evaluatedEvent.Set();
+                if (notify && valueChanged != null)
+                    valueChanged(this, EventArgs.Empty);
+            }
+        }
+
+        internal UpdateCallback GetUpdateCallback()
+        {
+            if (IsEvaluating)
+            {
+                if (updateCallback == null)
+                    updateCallback = new UpdateCallback(new UpdateCallbackProxy(this), path);
+                return updateCallback;
+            }
+
+            return null;
+        }
+
+        ~ObjectValue()
+        {
+            if (updateCallback != null)
+                System.Runtime.Remoting.RemotingServices.Disconnect((UpdateCallbackProxy)updateCallback.Callback);
+        }
+
+        internal static void ConnectCallbacks(StackFrame parentFrame, params ObjectValue[] values)
+        {
+            Dictionary<IObjectValueUpdater, List<UpdateCallback>> callbacks = null;
+            var valueList = new List<ObjectValue>(values);
+
+            for (int n = 0; n < valueList.Count; n++)
+            {
+                var val = valueList[n];
+                val.source = parentFrame.DebuggerSession.WrapDebuggerObject(val.source);
+                val.updater = parentFrame.DebuggerSession.WrapDebuggerObject(val.updater);
+                val.parentFrame = parentFrame;
+
+                UpdateCallback cb = val.GetUpdateCallback();
+                if (cb != null)
+                {
+                    if (callbacks == null)
+                        callbacks = new Dictionary<IObjectValueUpdater, List<UpdateCallback>>();
+
+                    List<UpdateCallback> list;
+                    if (!callbacks.TryGetValue(val.Updater, out list))
+                    {
+                        list = new List<UpdateCallback>();
+                        callbacks[val.Updater] = list;
+                    }
+
+                    list.Add(cb);
+                }
+
+                if (val.children != null)
+                    valueList.AddRange(val.children);
+            }
+
+            if (callbacks != null)
+            {
+                // Do the callback connection in a background thread
+                ThreadPool.QueueUserWorkItem(delegate
+                {
+                    foreach (KeyValuePair<IObjectValueUpdater, List<UpdateCallback>> cbs in callbacks)
+                    {
+                        cbs.Key.RegisterUpdateCallbacks(cbs.Value.ToArray());
+                    }
+                });
+            }
+        }
+    }
+
+    class UpdateCallbackProxy : MarshalByRefObject, IObjectValueUpdateCallback
+    {
+        readonly WeakReference valRef;
+
+        public void UpdateValue(ObjectValue newValue)
+        {
+            var val = valRef.Target as ObjectValue;
+
+            if (val != null)
+                val.UpdateFrom(newValue, true);
+        }
+
+        public UpdateCallbackProxy(ObjectValue val)
+        {
+            valRef = new WeakReference(val);
+        }
+    }
 }

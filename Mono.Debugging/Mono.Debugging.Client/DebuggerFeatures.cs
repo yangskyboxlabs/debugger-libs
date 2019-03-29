@@ -29,19 +29,19 @@ using System;
 
 namespace Mono.Debugging.Client
 {
-	[Flags]
-	public enum DebuggerFeatures: uint
-	{
-		None = 0,
-		ConditionalBreakpoints = 1,
-		Tracepoints = 1 << 1,
-		Catchpoints = 1 << 2,
-		Attaching = 1 << 3,
-		DebugFile = 1 << 4,
-		Stepping = 1 << 5,
-		Pause = 1 << 6,
-		Breakpoints = 1 << 7,
-		Disassembly = 1 << 8,
-		All = 0xffffffff
-	}
+    [Flags]
+    public enum DebuggerFeatures : uint
+    {
+        None = 0,
+        ConditionalBreakpoints = 1,
+        Tracepoints = 1 << 1,
+        Catchpoints = 1 << 2,
+        Attaching = 1 << 3,
+        DebugFile = 1 << 4,
+        Stepping = 1 << 5,
+        Pause = 1 << 6,
+        Breakpoints = 1 << 7,
+        Disassembly = 1 << 8,
+        All = 0xffffffff
+    }
 }

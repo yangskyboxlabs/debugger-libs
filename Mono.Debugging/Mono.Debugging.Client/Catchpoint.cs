@@ -30,57 +30,60 @@ using System.Xml;
 
 namespace Mono.Debugging.Client
 {
-	[Serializable]
-	public class Catchpoint: BreakEvent
-	{
-		string exceptionName;
-		bool includeSubclasses;
-		
-		public Catchpoint (string exceptionName) : this (exceptionName, true)
-		{
-		}
+    [Serializable]
+    public class Catchpoint : BreakEvent
+    {
+        string exceptionName;
+        bool includeSubclasses;
 
-		public Catchpoint (string exceptionName, bool includeSubclasses)
-		{
-			this.exceptionName = exceptionName;
-			this.includeSubclasses = includeSubclasses;
-		}
-		
-		internal Catchpoint (XmlElement elem, string baseDir): base (elem, baseDir)
-		{
-			exceptionName = elem.GetAttribute ("exceptionName");
+        public Catchpoint(string exceptionName)
+            : this(exceptionName, true) { }
 
-			var str = elem.GetAttribute ("includeSubclasses");
-			if (string.IsNullOrEmpty (str) || !bool.TryParse (str, out includeSubclasses)) {
-				// fall back to the old default behavior
-				includeSubclasses = true;
-			}
-		}
+        public Catchpoint(string exceptionName, bool includeSubclasses)
+        {
+            this.exceptionName = exceptionName;
+            this.includeSubclasses = includeSubclasses;
+        }
 
-		internal override XmlElement ToXml (XmlDocument doc, string baseDir)
-		{
-			XmlElement elem = base.ToXml (doc, baseDir);
-			elem.SetAttribute ("exceptionName", exceptionName);
-			elem.SetAttribute ("includeSubclasses", includeSubclasses.ToString ());
-			return elem;
-		}
+        internal Catchpoint(XmlElement elem, string baseDir)
+            : base(elem, baseDir)
+        {
+            exceptionName = elem.GetAttribute("exceptionName");
 
-		
-		public string ExceptionName {
-			get { return exceptionName; }
-		}
+            var str = elem.GetAttribute("includeSubclasses");
+            if (string.IsNullOrEmpty(str) || !bool.TryParse(str, out includeSubclasses))
+            {
+                // fall back to the old default behavior
+                includeSubclasses = true;
+            }
+        }
 
-		public bool IncludeSubclasses {
-			get { return includeSubclasses; }
-		}
-		
-		public override void CopyFrom (BreakEvent ev)
-		{
-			base.CopyFrom (ev);
-			Catchpoint cp = (Catchpoint) ev;
-			exceptionName = cp.exceptionName;
-			includeSubclasses = cp.includeSubclasses;
-		}
+        internal override XmlElement ToXml(XmlDocument doc, string baseDir)
+        {
+            XmlElement elem = base.ToXml(doc, baseDir);
+            elem.SetAttribute("exceptionName", exceptionName);
+            elem.SetAttribute("includeSubclasses", includeSubclasses.ToString());
+            return elem;
+        }
 
-	}
+        public string ExceptionName
+        {
+            get { return exceptionName; }
+            set { exceptionName = value; }
+        }
+
+        public bool IncludeSubclasses
+        {
+            get { return includeSubclasses; }
+            set { includeSubclasses = value; }
+        }
+
+        public override void CopyFrom(BreakEvent ev)
+        {
+            base.CopyFrom(ev);
+            Catchpoint cp = (Catchpoint)ev;
+            exceptionName = cp.exceptionName;
+            includeSubclasses = cp.includeSubclasses;
+        }
+    }
 }

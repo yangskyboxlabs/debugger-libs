@@ -29,17 +29,18 @@ using System;
 
 namespace Mono.Debugging.Client
 {
-	public class BreakEventArgs: EventArgs
-	{
-		BreakEvent be;
-		
-		public BreakEventArgs (BreakEvent be)
-		{
-			this.be = be;
-		}
-		
-		public BreakEvent BreakEvent {
-			get { return be; }
-		}
-	}
+    public class BreakEventArgs : EventArgs
+    {
+        BreakEvent be;
+
+        public BreakEventArgs(BreakEvent be)
+        {
+            this.be = be;
+        }
+
+        public BreakEvent BreakEvent
+        {
+            get { return be; }
+        }
+    }
 }

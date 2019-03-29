@@ -23,54 +23,56 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
+
 using System;
 
 namespace Mono.Debugging.Client
 {
-	/// <summary>
-	/// This is a simple abstraction so that MD can plug in its own logging service to handle the Mono.Debugging.Soft
-	/// error logging, without Mono.Debugging.Soft depending on MonoDevelop.Core.
-	/// In the absence of a custom logger, it writes to Console.
-	/// </summary>
-	public static class DebuggerLoggingService
-	{
-		public static ICustomLogger CustomLogger { get; set; }
-		
-		public static void LogError (string message, Exception ex)
-		{
-			if (CustomLogger != null)
-				CustomLogger.LogError (message, ex);
-			else
-				Console.WriteLine (message + (ex != null? System.Environment.NewLine + ex.ToString () : string.Empty));
-		}
+    /// <summary>
+    /// This is a simple abstraction so that MD can plug in its own logging service to handle the Mono.Debugging.Soft
+    /// error logging, without Mono.Debugging.Soft depending on MonoDevelop.Core.
+    /// In the absence of a custom logger, it writes to Console.
+    /// </summary>
+    public static class DebuggerLoggingService
+    {
+        public static ICustomLogger CustomLogger { get; set; }
 
-		public static void LogMessage (string messageFormat, params object[] args)
-		{
-			if (CustomLogger != null)
-				CustomLogger.LogMessage (messageFormat, args);
-			else
-				Console.WriteLine (messageFormat, args);
-		}
+        public static void LogError(string message, Exception ex)
+        {
+            if (CustomLogger != null)
+                CustomLogger.LogError(message, ex);
+            else
+                Console.WriteLine(message + (ex != null ? System.Environment.NewLine + ex.ToString() : string.Empty));
+        }
 
-		//this is meant to show a GUI if possible
-		public static void LogAndShowException (string message, Exception ex)
-		{
-			if (CustomLogger != null)
-				CustomLogger.LogAndShowException (message, ex);
-			else
-				LogError (message, ex);
-		}
-	}
-	
-	public interface ICustomLogger
-	{
-		void LogError (string message, System.Exception ex);
-		void LogAndShowException (string message, System.Exception ex);
-		void LogMessage (string messageFormat, params object[] args);
-		/// <summary>
-		/// Gets the new debugger log filename. It may return null which means disable logging.
-		/// </summary>
-		/// <returns>The new debugger log filename or null.</returns>
-		string GetNewDebuggerLogFilename ();
-	}
+        public static void LogMessage(string messageFormat, params object[] args)
+        {
+            if (CustomLogger != null)
+                CustomLogger.LogMessage(messageFormat, args);
+            else
+                Console.WriteLine(messageFormat, args);
+        }
+
+        //this is meant to show a GUI if possible
+        public static void LogAndShowException(string message, Exception ex)
+        {
+            if (CustomLogger != null)
+                CustomLogger.LogAndShowException(message, ex);
+            else
+                LogError(message, ex);
+        }
+    }
+
+    public interface ICustomLogger
+    {
+        void LogError(string message, System.Exception ex);
+        void LogAndShowException(string message, System.Exception ex);
+        void LogMessage(string messageFormat, params object[] args);
+
+        /// <summary>
+        /// Gets the new debugger log filename. It may return null which means disable logging.
+        /// </summary>
+        /// <returns>The new debugger log filename or null.</returns>
+        string GetNewDebuggerLogFilename();
+    }
 }

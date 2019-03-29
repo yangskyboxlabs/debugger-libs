@@ -26,17 +26,16 @@
 //
 
 using System;
-using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-	public interface ICollectionAdaptor
-	{
-		int[] GetLowerBounds ();
-		int[] GetDimensions ();
-		object GetElement (int[] indices);
-		Array GetElements (int[] indices, int count);
-		object ElementType { get; }
-		void SetElement (int[] indices, object val);
-	}
+    public interface ICollectionAdaptor
+    {
+        int[] GetLowerBounds();
+        int[] GetDimensions();
+        object GetElement(int[] indices);
+        Array GetElements(int[] indices, int count);
+        object ElementType { get; }
+        void SetElement(int[] indices, object val);
+    }
 }

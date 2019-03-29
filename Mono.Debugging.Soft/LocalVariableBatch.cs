@@ -24,37 +24,37 @@
 // THE SOFTWARE.
 
 using System;
-
 using Mono.Debugger.Soft;
 
 namespace Mono.Debugging.Soft
 {
-	public class LocalVariableBatch
-	{
-		readonly LocalVariable[] variables;
-		readonly StackFrame frame;
-		Value[] values;
+    public class LocalVariableBatch
+    {
+        readonly LocalVariable[] variables;
+        readonly StackFrame frame;
+        Value[] values;
 
-		public LocalVariableBatch (StackFrame frame, LocalVariable[] variables)
-		{
-			this.variables = variables;
-			this.frame = frame;
-		}
+        public LocalVariableBatch(StackFrame frame, LocalVariable[] variables)
+        {
+            this.variables = variables;
+            this.frame = frame;
+        }
 
-		public Value GetValue (LocalVariable variable)
-		{
-			if (variable == null)
-				throw new ArgumentNullException ("variable");
+        public Value GetValue(LocalVariable variable)
+        {
+            if (variable == null)
+                throw new ArgumentNullException("variable");
 
-			if (values == null)
-				values = frame.GetValues (variables);
+            if (values == null)
+                values = frame.GetValues(variables);
 
-			for (int i = 0; i < variables.Length; i++) {
-				if (variable == variables[i])
-					return values[i];
-			}
+            for (int i = 0; i < variables.Length; i++)
+            {
+                if (variable == variables[i])
+                    return values[i];
+            }
 
-			throw new ArgumentOutOfRangeException ("variable");
-		}
-	}
+            throw new ArgumentOutOfRangeException("variable");
+        }
+    }
 }

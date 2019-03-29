@@ -29,19 +29,16 @@ using System.Runtime.Serialization;
 
 namespace Mono.Debugging.Client
 {
-	[Serializable]
-	public class DebuggerException: Exception
-	{
-		public DebuggerException (SerializationInfo info, StreamingContext ctx): base (info, ctx)
-		{
-		}
-		
-		public DebuggerException (string message): base (message)
-		{
-		}
-		
-		public DebuggerException (string message, Exception inner): base (message, inner)
-		{
-		}
-	}
+    [Serializable]
+    public class DebuggerException : Exception
+    {
+        public DebuggerException(SerializationInfo info, StreamingContext ctx)
+            : base(info, ctx) { }
+
+        public DebuggerException(string message)
+            : base(message) { }
+
+        public DebuggerException(string message, Exception inner)
+            : base(message, inner) { }
+    }
 }

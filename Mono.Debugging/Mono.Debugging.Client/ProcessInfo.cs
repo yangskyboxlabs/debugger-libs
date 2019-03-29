@@ -29,41 +29,51 @@ using System;
 
 namespace Mono.Debugging.Client
 {
-	[Serializable]
-	public class ProcessInfo
-	{
-		long id;
-		string name;
-		
-		[NonSerialized]
-		DebuggerSession session;
-		
-		internal void Attach (DebuggerSession session)
-		{
-			this.session = session;
-		}
-		
-		public long Id {
-			get {
-				return id;
-			}
-		}
+    [Serializable]
+    public class ProcessInfo
+    {
+        long id;
+        string name;
+        string description;
 
-		public string Name {
-			get {
-				return name;
-			}
-		}
+        [NonSerialized]
+        DebuggerSession session;
 
-		public ProcessInfo (long id, string name)
-		{
-			this.id = id;
-			this.name = name;
-		}
-		
-		public ThreadInfo[] GetThreads ()
-		{
-			return session.GetThreads (id);
-		}
-	}
+        internal void Attach(DebuggerSession session)
+        {
+            this.session = session;
+        }
+
+        public long Id
+        {
+            get { return id; }
+        }
+
+        public string Name
+        {
+            get { return name; }
+        }
+
+        public string Description
+        {
+            get { return description; }
+        }
+
+        public ProcessInfo(string name, string description)
+        {
+            this.name = name;
+            this.description = description;
+        }
+
+        public ProcessInfo(long id, string name)
+        {
+            this.id = id;
+            this.name = name;
+        }
+
+        public ThreadInfo[] GetThreads()
+        {
+            return session.GetThreads(id);
+        }
+    }
 }

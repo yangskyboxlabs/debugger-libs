@@ -23,53 +23,58 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-using Mono.Debugging.Evaluation;
+using System;
 using Mono.Debugger.Soft;
+using Mono.Debugging.Evaluation;
 
 namespace Mono.Debugging.Soft
 {
-	public class StringAdaptor: IStringAdaptor
-	{
-		readonly bool atleast_2_10;
-		readonly StringMirror str;
-		string val;
-		
-		public StringAdaptor (StringMirror str)
-		{
-			atleast_2_10 = str.VirtualMachine.Version.AtLeast (2, 10);
-			this.str = str;
-		}
-		
-		public int Length {
-			get {
-				if (atleast_2_10)
-					return str.Length;
-				
-				if (val == null)
-					val = str.Value;
-				
-				return val.Length;
-			}
-		}
-		
-		public string Value {
-			get {
-				if (val == null)
-					val = str.Value;
-				
-				return val;
-			}
-		}
-		
-		public string Substring (int index, int length)
-		{
-			if (val == null && atleast_2_10)
-				return new string (str.GetChars (index, length));
-			
-			if (val == null)
-				val = str.Value;
-			
-			return val.Substring (index, length);
-		}
-	}
+    public class StringAdaptor : IStringAdaptor
+    {
+        readonly bool atleast_2_10;
+        readonly StringMirror str;
+        string val;
+
+        public StringAdaptor(StringMirror str)
+        {
+            atleast_2_10 = str.VirtualMachine.Version.AtLeast(2, 10);
+            this.str = str;
+        }
+
+        public int Length
+        {
+            get
+            {
+                if (atleast_2_10)
+                    return str.Length;
+
+                if (val == null)
+                    val = str.Value;
+
+                return val.Length;
+            }
+        }
+
+        public string Value
+        {
+            get
+            {
+                if (val == null)
+                    val = str.Value;
+
+                return val;
+            }
+        }
+
+        public string Substring(int index, int length)
+        {
+            if (val == null && atleast_2_10)
+                return new string(str.GetChars(index, length));
+
+            if (val == null)
+                val = str.Value;
+
+            return val.Substring(index, length);
+        }
+    }
 }

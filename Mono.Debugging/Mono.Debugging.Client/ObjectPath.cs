@@ -30,72 +30,78 @@ using System.Collections;
 
 namespace Mono.Debugging.Client
 {
-	[Serializable]
-	public struct ObjectPath
-	{
-		string[] path;
-		
-		public ObjectPath (params string[] path)
-		{
-			this.path = path;
-		}
-		
-		public string this [int n] {
-			get {
-				if (path == null)
-					throw new IndexOutOfRangeException ();
-				return path [n]; 
-			}
-		}
-		
-		public int Length {
-			get { return path != null ? path.Length : 0; }
-		}
-		
-		public IEnumerable GetEnumerator ()
-		{
-			if (path != null)
-				return path;
-			else
-				return new string [0];
-		}
-		
-		public ObjectPath GetSubpath (int start)
-		{
-			if (start == 0)
-				return this;
-			else {
-				string[] newPath = new string [path.Length - start];
-				Array.Copy (path, start, newPath, 0, newPath.Length);
-				return new ObjectPath (newPath);
-			}
-		}
-		
-		public ObjectPath Append (string name)
-		{
-			string[] newPath = new string [path.Length + 1];
-			Array.Copy (path, newPath, path.Length);
-			newPath [path.Length] = name;
-			return new ObjectPath (newPath);
-		}
-		
-		public string LastName {
-			get {
-				if (Length == 0)
-					return "";
-				else
-					return path [path.Length - 1];
-			}
-		}
-		
-		public string Join (string separator)
-		{
-			return string.Join (separator, path);
-		}
-		
-		public override string ToString ()
-		{
-			return Join ("/");
-		}
-	}
+    [Serializable]
+    public struct ObjectPath
+    {
+        string[] path;
+
+        public ObjectPath(params string[] path)
+        {
+            this.path = path;
+        }
+
+        public string this[int n]
+        {
+            get
+            {
+                if (path == null)
+                    throw new IndexOutOfRangeException();
+                return path[n];
+            }
+        }
+
+        public int Length
+        {
+            get { return path != null ? path.Length : 0; }
+        }
+
+        public IEnumerable GetEnumerator()
+        {
+            if (path != null)
+                return path;
+            else
+                return new string [0];
+        }
+
+        public ObjectPath GetSubpath(int start)
+        {
+            if (start == 0)
+                return this;
+            else
+            {
+                string[] newPath = new string [path.Length - start];
+                Array.Copy(path, start, newPath, 0, newPath.Length);
+                return new ObjectPath(newPath);
+            }
+        }
+
+        public ObjectPath Append(string name)
+        {
+            string[] newPath = new string [path.Length + 1];
+            Array.Copy(path, newPath, path.Length);
+            newPath[path.Length] = name;
+            return new ObjectPath(newPath);
+        }
+
+        public string LastName
+        {
+            get
+            {
+                if (Length == 0)
+                    return "";
+                else
+                    return path[path.Length - 1];
+            }
+        }
+
+        public string Join(string separator)
+        {
+            return string.Join(separator, path);
+        }
+
+        public override string ToString()
+        {
+            return Join("/");
+        }
+    }
 }

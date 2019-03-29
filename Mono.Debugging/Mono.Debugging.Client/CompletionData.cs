@@ -30,48 +30,44 @@ using System.Collections.Generic;
 
 namespace Mono.Debugging.Client
 {
-	[Serializable]
-	public class CompletionData
-	{
-		int expressionLength;
-		List<CompletionItem> items = new List<CompletionItem> ();
-		
-		public int ExpressionLength {
-			get {
-				return expressionLength;
-			}
-			set {
-				expressionLength = value;
-			}
-		}
-		
-		public List<CompletionItem> Items {
-			get { return items; }
-		}
-	}
-	
-	[Serializable]
-	public class CompletionItem
-	{
-		string name;
-		ObjectValueFlags flags;
-		
-		public CompletionItem (string name, ObjectValueFlags flags)
-		{
-			this.name = name;
-			this.flags = flags;
-		}
-		
-		public string Name {
-			get {
-				return name;
-			}
-		}
-		
-		public ObjectValueFlags Flags {
-			get {
-				return flags;
-			}
-		}
-	}
+    [Serializable]
+    public class CompletionData
+    {
+        int expressionLength;
+        List<CompletionItem> items = new List<CompletionItem>();
+
+        public int ExpressionLength
+        {
+            get { return expressionLength; }
+            set { expressionLength = value; }
+        }
+
+        public List<CompletionItem> Items
+        {
+            get { return items; }
+        }
+    }
+
+    [Serializable]
+    public class CompletionItem
+    {
+        string name;
+        ObjectValueFlags flags;
+
+        public CompletionItem(string name, ObjectValueFlags flags)
+        {
+            this.name = name;
+            this.flags = flags;
+        }
+
+        public string Name
+        {
+            get { return name; }
+        }
+
+        public ObjectValueFlags Flags
+        {
+            get { return flags; }
+        }
+    }
 }

@@ -25,161 +25,173 @@
 
 using System;
 using System.Collections.Generic;
-
 using ICSharpCode.NRefactory.CSharp;
 
 namespace Mono.Debugging.Evaluation
 {
-	public static class NRefactoryExtensions
-	{
-		#region AstType
+    public static class NRefactoryExtensions
+    {
+        #region AstType
 
-		public static object Resolve (this AstType type, EvaluationContext ctx)
-		{
-			var args = new List<object> ();
-			var name = type.Resolve (ctx, args);
+        public static object Resolve(this AstType type, EvaluationContext ctx)
+        {
+            var args = new List<object>();
+            var name = type.Resolve(ctx, args);
 
-			//if (name.StartsWith ("global::", StringComparison.Ordinal))
-			//	name = name.Substring ("global::".Length);
+            //if (name.StartsWith ("global::", StringComparison.Ordinal))
+            //	name = name.Substring ("global::".Length);
 
-			if (string.IsNullOrEmpty (name))
-				return null;
+            if (string.IsNullOrEmpty(name))
+                return null;
 
-			if (args.Count > 0)
-				return ctx.Adapter.GetType (ctx, name, args.ToArray ());
+            if (args.Count > 0)
+                return ctx.Adapter.GetType(ctx, name, args.ToArray());
 
-			return ctx.Adapter.GetType (ctx, name);
-		}
+            return ctx.Adapter.GetType(ctx, name);
+        }
 
-		static string Resolve (this AstType type, EvaluationContext ctx, List<object> args)
-		{
-			if (type is PrimitiveType)
-				return Resolve ((PrimitiveType) type, ctx, args);
-			else if (type is ComposedType)
-				return Resolve ((ComposedType) type, ctx, args);
-			else if (type is MemberType)
-				return Resolve ((MemberType) type, ctx, args);
-			else if (type is SimpleType)
-				return Resolve ((SimpleType) type, ctx, args);
+        static string Resolve(this AstType type, EvaluationContext ctx, List<object> args)
+        {
+            if (type is PrimitiveType)
+                return Resolve((PrimitiveType)type, ctx, args);
+            else if (type is ComposedType)
+                return Resolve((ComposedType)type, ctx, args);
+            else if (type is MemberType)
+                return Resolve((MemberType)type, ctx, args);
+            else if (type is SimpleType)
+                return Resolve((SimpleType)type, ctx, args);
 
-			return null;
-		}
+            return null;
+        }
 
-		#endregion AstType
+        #endregion AstType
 
-		#region ComposedType
+        #region ComposedType
 
-		static string Resolve (this ComposedType type, EvaluationContext ctx, List<object> args)
-		{
-			string name;
+        static string Resolve(this ComposedType type, EvaluationContext ctx, List<object> args)
+        {
+            string name;
 
-			if (type.HasNullableSpecifier) {
-				args.Insert (0, type.BaseType.Resolve (ctx));
-				name = "System.Nullable`1";
-			} else {
-				name = type.BaseType.Resolve (ctx, args);
-			}
+            if (type.HasNullableSpecifier)
+            {
+                args.Insert(0, type.BaseType.Resolve(ctx));
+                name = "System.Nullable`1";
+            }
+            else
+            {
+                name = type.BaseType.Resolve(ctx, args);
+            }
 
-			if (type.PointerRank > 0)
-				name += new string ('*', type.PointerRank);
+            if (type.PointerRank > 0)
+                name += new string('*', type.PointerRank);
 
-			if (type.ArraySpecifiers.Count > 0) {
-				foreach (var spec in type.ArraySpecifiers) {
-					if (spec.Dimensions > 1)
-						name += "[" + new string (',', spec.Dimensions - 1) + "]";
-					else
-						name += "[]";
-				}
-			}
+            if (type.ArraySpecifiers.Count > 0)
+            {
+                foreach (var spec in type.ArraySpecifiers)
+                {
+                    if (spec.Dimensions > 1)
+                        name += "[" + new string(',', spec.Dimensions - 1) + "]";
+                    else
+                        name += "[]";
+                }
+            }
 
-			return name;
-		}
-		
-		#endregion ComposedType
+            return name;
+        }
 
-		#region MemberType
+        #endregion ComposedType
 
-		static string Resolve (this MemberType type, EvaluationContext ctx, List<object> args)
-		{
-			string name;
+        #region MemberType
 
-			if (!type.IsDoubleColon) {
-				var parent = type.Target.Resolve (ctx, args);
-				name = parent + "." + type.MemberName;
-			} else {
-				name = type.MemberName;
-			}
+        static string Resolve(this MemberType type, EvaluationContext ctx, List<object> args)
+        {
+            string name;
 
-			if (type.TypeArguments.Count > 0) {
-				name += "`" + type.TypeArguments.Count;
-				foreach (var arg in type.TypeArguments) {
-					object resolved;
+            if (!type.IsDoubleColon)
+            {
+                var parent = type.Target.Resolve(ctx, args);
+                name = parent + "." + type.MemberName;
+            }
+            else
+            {
+                name = type.MemberName;
+            }
 
-					if ((resolved = arg.Resolve (ctx)) == null)
-						return null;
+            if (type.TypeArguments.Count > 0)
+            {
+                name += "`" + type.TypeArguments.Count;
+                foreach (var arg in type.TypeArguments)
+                {
+                    object resolved;
 
-					args.Add (resolved);
-				}
-			}
+                    if ((resolved = arg.Resolve(ctx)) == null)
+                        return null;
 
-			return name;
-		}
+                    args.Add(resolved);
+                }
+            }
 
-		#endregion MemberType
+            return name;
+        }
 
-		#region PrimitiveType
+        #endregion MemberType
 
-		public static string Resolve (this PrimitiveType type)
-		{
-			switch (type.Keyword) {
-			case "bool":    return "System.Boolean";
-			case "sbyte":   return "System.SByte";
-			case "byte":    return "System.Byte";
-			case "char":    return "System.Char";
-			case "short":   return "System.Int16";
-			case "ushort":  return "System.UInt16";
-			case "int":     return "System.Int32";
-			case "uint":    return "System.UInt32";
-			case "long":    return "System.Int64";
-			case "ulong":   return "System.UInt64";
-			case "float":   return "System.Single";
-			case "double":  return "System.Double";
-			case "decimal": return "System.Decimal";
-			case "string":  return "System.String";
-			case "object":  return "System.Object";
-			case "void":    return "System.Void";
-			default: return null;
-			}
-		}
+        #region PrimitiveType
 
-		static string Resolve (this PrimitiveType type, EvaluationContext ctx, List<object> args)
-		{
-			return Resolve (type);
-		}
+        public static string Resolve(this PrimitiveType type)
+        {
+            switch (type.Keyword)
+            {
+                case "bool": return "System.Boolean";
+                case "sbyte": return "System.SByte";
+                case "byte": return "System.Byte";
+                case "char": return "System.Char";
+                case "short": return "System.Int16";
+                case "ushort": return "System.UInt16";
+                case "int": return "System.Int32";
+                case "uint": return "System.UInt32";
+                case "long": return "System.Int64";
+                case "ulong": return "System.UInt64";
+                case "float": return "System.Single";
+                case "double": return "System.Double";
+                case "decimal": return "System.Decimal";
+                case "string": return "System.String";
+                case "object": return "System.Object";
+                case "void": return "System.Void";
+                default: return null;
+            }
+        }
 
-		#endregion PrimitiveType
+        static string Resolve(this PrimitiveType type, EvaluationContext ctx, List<object> args)
+        {
+            return Resolve(type);
+        }
 
-		#region SimpleType
+        #endregion PrimitiveType
 
-		static string Resolve (this SimpleType type, EvaluationContext ctx, List<object> args)
-		{
-			string name = type.Identifier;
+        #region SimpleType
 
-			if (type.TypeArguments.Count > 0) {
-				name += "`" + type.TypeArguments.Count;
-				foreach (var arg in type.TypeArguments) {
-					object resolved;
+        static string Resolve(this SimpleType type, EvaluationContext ctx, List<object> args)
+        {
+            string name = type.Identifier;
 
-					if ((resolved = arg.Resolve (ctx)) == null)
-						return null;
+            if (type.TypeArguments.Count > 0)
+            {
+                name += "`" + type.TypeArguments.Count;
+                foreach (var arg in type.TypeArguments)
+                {
+                    object resolved;
 
-					args.Add (resolved);
-				}
-			}
+                    if ((resolved = arg.Resolve(ctx)) == null)
+                        return null;
 
-			return name;
-		}
+                    args.Add(resolved);
+                }
+            }
 
-		#endregion SimpleType
-	}
+            return name;
+        }
+
+        #endregion SimpleType
+    }
 }

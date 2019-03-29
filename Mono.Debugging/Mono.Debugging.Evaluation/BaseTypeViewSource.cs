@@ -31,59 +31,59 @@ using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-	public class BaseTypeViewSource: RemoteFrameObject, IObjectValueSource
-	{
-		EvaluationContext ctx;
-		object type;
-		object obj;
-		IObjectSource objectSource;
-		
-		public BaseTypeViewSource (EvaluationContext ctx, IObjectSource objectSource, object type, object obj)
-		{
-			this.ctx = ctx;
-			this.type = type;
-			this.obj = obj;
-			this.objectSource = objectSource;
-		}
-		
-		public static ObjectValue CreateBaseTypeView (EvaluationContext ctx, IObjectSource objectSource, object type, object obj)
-		{
-			BaseTypeViewSource src = new BaseTypeViewSource (ctx, objectSource, type, obj);
-			src.Connect ();
-			string tname = ctx.Adapter.GetDisplayTypeName (ctx, type);
-			ObjectValue val = ObjectValue.CreateObject (src, new ObjectPath ("base"), tname, "{" + tname + "}", ObjectValueFlags.Type|ObjectValueFlags.ReadOnly|ObjectValueFlags.NoRefresh, null);
-			val.ChildSelector = "";
-			return val;
-		}
-		
-		#region IObjectValueSource implementation
+    public class BaseTypeViewSource : RemoteFrameObject, IObjectValueSource
+    {
+        EvaluationContext ctx;
+        object type;
+        object obj;
+        IObjectSource objectSource;
 
-		public ObjectValue[] GetChildren (ObjectPath path, int index, int count, EvaluationOptions options)
-		{
-			EvaluationContext cctx = ctx.WithOptions (options);
-			return cctx.Adapter.GetObjectValueChildren (cctx, objectSource, type, obj, index, count, false);
-		}
+        public BaseTypeViewSource(EvaluationContext ctx, IObjectSource objectSource, object type, object obj)
+        {
+            this.ctx = ctx;
+            this.type = type;
+            this.obj = obj;
+            this.objectSource = objectSource;
+        }
 
-		public EvaluationResult SetValue (ObjectPath path, string value, EvaluationOptions options)
-		{
-			throw new NotSupportedException ();
-		}
+        public static ObjectValue CreateBaseTypeView(EvaluationContext ctx, IObjectSource objectSource, object type, object obj)
+        {
+            BaseTypeViewSource src = new BaseTypeViewSource(ctx, objectSource, type, obj);
+            src.Connect();
+            string tname = ctx.Adapter.GetDisplayTypeName(ctx, type);
+            ObjectValue val = ObjectValue.CreateObject(src, new ObjectPath("base"), tname, "{" + tname + "}", ObjectValueFlags.Type | ObjectValueFlags.ReadOnly | ObjectValueFlags.NoRefresh, null);
+            val.ChildSelector = "";
+            return val;
+        }
 
-		public ObjectValue GetValue (ObjectPath path, EvaluationOptions options)
-		{
-			throw new NotSupportedException ();
-		}
-		
-		public object GetRawValue (ObjectPath path, EvaluationOptions options)
-		{
-			throw new NotImplementedException ();
-		}
-		
-		public void SetRawValue (ObjectPath path, object value, EvaluationOptions options)
-		{
-			throw new NotImplementedException ();
-		}
-		
-		#endregion
-	}
+        #region IObjectValueSource implementation
+
+        public ObjectValue[] GetChildren(ObjectPath path, int index, int count, EvaluationOptions options)
+        {
+            EvaluationContext cctx = ctx.WithOptions(options);
+            return cctx.Adapter.GetObjectValueChildren(cctx, objectSource, type, obj, index, count, false);
+        }
+
+        public EvaluationResult SetValue(ObjectPath path, string value, EvaluationOptions options)
+        {
+            throw new NotSupportedException();
+        }
+
+        public ObjectValue GetValue(ObjectPath path, EvaluationOptions options)
+        {
+            throw new NotSupportedException();
+        }
+
+        public object GetRawValue(ObjectPath path, EvaluationOptions options)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void SetRawValue(ObjectPath path, object value, EvaluationOptions options)
+        {
+            throw new NotImplementedException();
+        }
+
+        #endregion
+    }
 }

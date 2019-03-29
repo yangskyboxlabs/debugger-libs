@@ -26,77 +26,80 @@
 
 using System;
 using System.Linq;
-using Mono.Debugging.Evaluation;
 using Mono.Debugger.Soft;
+using Mono.Debugging.Evaluation;
 
 namespace Mono.Debugging.Soft
 {
-	public class ArrayAdaptor : ICollectionAdaptor
-	{
-		readonly ArrayMirror array;
-		int[] dimensions, bounds;
-		
-		public ArrayAdaptor (ArrayMirror array)
-		{
-			this.array = array;
-		}
+    public class ArrayAdaptor : ICollectionAdaptor
+    {
+        readonly ArrayMirror array;
+        int[] dimensions, bounds;
 
-		public int[] GetLowerBounds ()
-		{
-			if (bounds == null) {
-				bounds = new int[array.Rank];
-				for (int i = 0; i < array.Rank; i++)
-					bounds[i] = array.GetLowerBound (i);
-			}
+        public ArrayAdaptor(ArrayMirror array)
+        {
+            this.array = array;
+        }
 
-			return bounds;
-		}
-		
-		public int[] GetDimensions ()
-		{
-			if (dimensions == null) {
-				dimensions = new int[array.Rank];
-				for (int i = 0; i < array.Rank; i++)
-					dimensions[i] = array.GetLength (i);
-			}
+        public int[] GetLowerBounds()
+        {
+            if (bounds == null)
+            {
+                bounds = new int[array.Rank];
+                for (int i = 0; i < array.Rank; i++)
+                    bounds[i] = array.GetLowerBound(i);
+            }
 
-			return dimensions;
-		}
-		
-		public object GetElement (int[] indices)
-		{
-			int i = GetIndex (indices);
-			return array.GetValues (i, 1)[0];
-		}
+            return bounds;
+        }
 
-		public Array GetElements (int[] indices, int count)
-		{
-			int i = GetIndex (indices);
-			return array.GetValues (i, count).ToArray ();
-		}
-		
-		public void SetElement (int[] indices, object val)
-		{
-			array.SetValues (GetIndex (indices), new Value[] { (Value) val });
-		}
+        public int[] GetDimensions()
+        {
+            if (dimensions == null)
+            {
+                dimensions = new int[array.Rank];
+                for (int i = 0; i < array.Rank; i++)
+                    dimensions[i] = array.GetLength(i);
+            }
 
-		int GetIndex (int [] indices)
-		{
-			int ts = 1;
-			int i = 0;
-			int [] dims = GetDimensions ();
-			var lowerBounds = GetLowerBounds ();
-			for (int n = indices.Length - 1; n >= 0; n--) {
-				i += (indices [n] - lowerBounds [n]) * ts;
-				ts *= dims [n];
-			}
-			return i;
-		}
-		
-		public object ElementType {
-			get {
-				return array.Type.GetElementType ();
-			}
-		}
-	}
+            return dimensions;
+        }
+
+        public object GetElement(int[] indices)
+        {
+            int i = GetIndex(indices);
+            return array.GetValues(i, 1)[0];
+        }
+
+        public Array GetElements(int[] indices, int count)
+        {
+            int i = GetIndex(indices);
+            return array.GetValues(i, count).ToArray();
+        }
+
+        public void SetElement(int[] indices, object val)
+        {
+            array.SetValues(GetIndex(indices), new Value[] { (Value)val });
+        }
+
+        int GetIndex(int[] indices)
+        {
+            int ts = 1;
+            int i = 0;
+            int[] dims = GetDimensions();
+            var lowerBounds = GetLowerBounds();
+            for (int n = indices.Length - 1; n >= 0; n--)
+            {
+                i += (indices[n] - lowerBounds[n]) * ts;
+                ts *= dims[n];
+            }
+
+            return i;
+        }
+
+        public object ElementType
+        {
+            get { return array.Type.GetElementType(); }
+        }
+    }
 }

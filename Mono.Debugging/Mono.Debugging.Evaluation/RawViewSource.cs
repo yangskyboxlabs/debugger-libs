@@ -32,52 +32,52 @@ using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-	public class RawViewSource: RemoteFrameObject, IObjectValueSource
-	{
-		object obj;
-		EvaluationContext ctx;
-		IObjectSource objectSource;
+    public class RawViewSource : RemoteFrameObject, IObjectValueSource
+    {
+        object obj;
+        EvaluationContext ctx;
+        IObjectSource objectSource;
 
-		public RawViewSource (EvaluationContext ctx, IObjectSource objectSource, object obj)
-		{
-			this.ctx = ctx;
-			this.obj = obj;
-			this.objectSource = objectSource;
-		}
+        public RawViewSource(EvaluationContext ctx, IObjectSource objectSource, object obj)
+        {
+            this.ctx = ctx;
+            this.obj = obj;
+            this.objectSource = objectSource;
+        }
 
-		public static ObjectValue CreateRawView (EvaluationContext ctx, IObjectSource objectSource, object obj)
-		{
-			RawViewSource src = new RawViewSource (ctx, objectSource, obj);
-			src.Connect ();
-			ObjectValue val = ObjectValue.CreateObject (src, new ObjectPath ("Raw View"), "", "", ObjectValueFlags.Group|ObjectValueFlags.ReadOnly|ObjectValueFlags.NoRefresh, null);
-			val.ChildSelector = "";
-			return val;
-		}
-		
-		public ObjectValue[] GetChildren (ObjectPath path, int index, int count, EvaluationOptions options)
-		{
-			EvaluationContext cctx = ctx.WithOptions (options);
-			return cctx.Adapter.GetObjectValueChildren (cctx, objectSource, cctx.Adapter.GetValueType (cctx, obj), obj, index, count, false);
-		}
-		
-		public ObjectValue GetValue (ObjectPath path, EvaluationOptions options)
-		{
-			throw new NotSupportedException ();
-		}
-		
-		public EvaluationResult SetValue (ObjectPath path, string value, EvaluationOptions options)
-		{
-			throw new NotSupportedException ();
-		}
-		
-		public void SetRawValue (ObjectPath path, object value, EvaluationOptions options)
-		{
-			throw new NotImplementedException ();
-		}
-		
-		public object GetRawValue (ObjectPath path, EvaluationOptions options)
-		{
-			throw new NotImplementedException ();
-		}
-	}
+        public static ObjectValue CreateRawView(EvaluationContext ctx, IObjectSource objectSource, object obj)
+        {
+            RawViewSource src = new RawViewSource(ctx, objectSource, obj);
+            src.Connect();
+            ObjectValue val = ObjectValue.CreateObject(src, new ObjectPath("Raw View"), "", "", ObjectValueFlags.Group | ObjectValueFlags.ReadOnly | ObjectValueFlags.NoRefresh, null);
+            val.ChildSelector = "";
+            return val;
+        }
+
+        public ObjectValue[] GetChildren(ObjectPath path, int index, int count, EvaluationOptions options)
+        {
+            EvaluationContext cctx = ctx.WithOptions(options);
+            return cctx.Adapter.GetObjectValueChildren(cctx, objectSource, cctx.Adapter.GetValueType(cctx, obj), obj, index, count, false);
+        }
+
+        public ObjectValue GetValue(ObjectPath path, EvaluationOptions options)
+        {
+            throw new NotSupportedException();
+        }
+
+        public EvaluationResult SetValue(ObjectPath path, string value, EvaluationOptions options)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void SetRawValue(ObjectPath path, object value, EvaluationOptions options)
+        {
+            throw new NotImplementedException();
+        }
+
+        public object GetRawValue(ObjectPath path, EvaluationOptions options)
+        {
+            throw new NotImplementedException();
+        }
+    }
 }
