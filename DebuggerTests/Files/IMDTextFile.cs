@@ -1,15 +1,10 @@
 //
-// Locale.cs
+// ITextFile.cs
 //
 // Author:
-//   Miguel de Icaza (miguel@ximian.com)
-//   Andreas Nahr (ClassDevelopment@A-SoftTech.com)
+//   Lluis Sanchez Gual
 //
-// (C) 2001 - 2003 Ximian, Inc (http://www.ximian.com)
-//
-
-//
-// Copyright (C) 2004 Novell, Inc (http://www.novell.com)
+// Copyright (C) 2005 Novell, Inc (http://www.novell.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -33,17 +28,19 @@
 
 using System;
 
-internal sealed class Locale
+namespace MonoDevelop.Projects.Text
 {
-    private Locale() { }
-
-    public static string GetText(string msg)
+    public interface IMDTextFile
     {
-        return msg;
-    }
+        string Name { get; }
 
-    public static string GetText(string fmt, params object[] args)
-    {
-        return String.Format(fmt, args);
+        string Text { get; }
+        int Length { get; }
+
+        string GetText(int startPosition, int endPosition);
+        char GetCharAt(int position);
+
+        int GetPositionFromLineColumn(int line, int column);
+        void GetLineColumnFromPosition(int position, out int line, out int column);
     }
 }

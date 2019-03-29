@@ -11,6 +11,7 @@
     <AssemblyName>Mono.Debugger.Soft</AssemblyName>
     <SignAssembly>True</SignAssembly>
     <AssemblyOriginatorKeyFile>mono.snk</AssemblyOriginatorKeyFile>
+      <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>True</DebugSymbols>
@@ -52,6 +53,8 @@
     <Compile Include="Mono.Debugger.Soft\CustomAttributeNamedArgumentMirror.cs" />
     <Compile Include="Mono.Debugger.Soft\CustomAttributeTypedArgumentMirror.cs" />
     <Compile Include="Mono.Debugger.Soft\DataConverter.cs" />
+      <Compile Include="Mono.Debugger.Soft\DelayedLambdaType.cs"/>
+      <Compile Include="Mono.Debugger.Soft\DelayedLambdaValue.cs"/>
     <Compile Include="Mono.Debugger.Soft\EnumMirror.cs" />
     <Compile Include="Mono.Debugger.Soft\Event.cs" />
     <Compile Include="Mono.Debugger.Soft\EventQueueImpl.cs" />
@@ -124,8 +127,8 @@
     <Reference Include="System" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\debugger-libs\cecil\Mono.Cecil.csproj">
-      <Project>{d68133bd-1e63-496e-9ede-4fbdbf77b486}</Project>
+      <ProjectReference Include="..\..\External\cecil\Mono.Cecil.csproj">
+          <Project>{c4e1a233-b6c0-4856-92cb-b52474409e49}</Project>
       <Name>Mono.Cecil</Name>
     </ProjectReference>
   </ItemGroup>
