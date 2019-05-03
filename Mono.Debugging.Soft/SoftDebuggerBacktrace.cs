@@ -35,18 +35,18 @@ using DC = Mono.Debugging.Client;
 
 namespace Mono.Debugging.Soft
 {
-    internal class SoftDebuggerStackFrame : Mono.Debugging.Client.StackFrame
+    internal class SoftDebuggerStackFrame : DC.StackFrame
     {
-        public Mono.Debugger.Soft.StackFrame StackFrame { get; private set; }
+        public MDB.StackFrame StackFrame { get; private set; }
 
-        public SoftDebuggerStackFrame(Mono.Debugger.Soft.StackFrame frame, string addressSpace, DC.SourceLocation location, string language, bool isExternalCode, bool hasDebugInfo, bool isDebuggerHidden, string fullModuleName, string fullTypeName)
+        public SoftDebuggerStackFrame(MDB.StackFrame frame, string addressSpace, DC.SourceLocation location, string language, bool isExternalCode, bool hasDebugInfo, bool isDebuggerHidden, string fullModuleName, string fullTypeName)
             : base(frame.ILOffset, addressSpace, location, language, isExternalCode, hasDebugInfo, isDebuggerHidden, fullModuleName, fullTypeName)
         {
             StackFrame = frame;
         }
     }
 
-    public class SoftDebuggerBacktrace : BaseBacktrace
+    public class SoftDebuggerBacktrace : BaseBacktrace<MDB.TypeMirror, MDB.Value>
     {
         readonly SoftDebuggerSession session;
         readonly MDB.ThreadMirror thread;
@@ -59,10 +59,7 @@ namespace Mono.Debugging.Soft
             this.session = session;
             this.thread = thread;
             stackVersion = session.StackVersion;
-            if (thread != null)
-                this.frames = thread.GetFrames();
-            else
-                this.frames = new MDB.StackFrame[0];
+            frames = thread != null ? thread.GetFrames() : new MDB.StackFrame[0];
         }
 
         void ValidateStack()

@@ -131,5 +131,9 @@
           <Project>{c4e1a233-b6c0-4856-92cb-b52474409e49}</Project>
       <Name>Mono.Cecil</Name>
     </ProjectReference>
+      <ProjectReference Include="..\Mono.Debugging\Mono.Debugging.csproj">
+          <Project>{90c99adb-7d4b-4eb4-98c2-40bd1b14c7d2}</Project>
+          <Name>Mono.Debugging</Name>
+      </ProjectReference>
   </ItemGroup>
 </Project>

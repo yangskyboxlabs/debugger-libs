@@ -36,18 +36,32 @@ namespace Mono.Debugging.Soft
 {
     public class FieldValueReference : SoftValueReference
     {
-        FieldInfoMirror field;
-        object obj;
-        TypeMirror declaringType;
-        ObjectValueFlags flags;
-        string vname;
-        FieldReferenceBatch batch;
+        readonly FieldInfoMirror field;
+        readonly Value obj;
+        readonly TypeMirror declaringType;
+        readonly ObjectValueFlags flags;
+        readonly string vname;
+        readonly FieldReferenceBatch batch;
 
-        public FieldValueReference(EvaluationContext ctx, FieldInfoMirror field, object obj, TypeMirror declaringType, FieldReferenceBatch batch = null)
-            : this(ctx, field, obj, declaringType, null, ObjectValueFlags.Field, batch) { }
+        public FieldValueReference(
+            SoftDebuggerAdaptor adaptor,
+            EvaluationContext ctx,
+            FieldInfoMirror field,
+            Value obj,
+            TypeMirror declaringType,
+            FieldReferenceBatch batch = null)
+            : this(adaptor, ctx, field, obj, declaringType, null, ObjectValueFlags.Field, batch) { }
 
-        public FieldValueReference(EvaluationContext ctx, FieldInfoMirror field, object obj, TypeMirror declaringType, string vname, ObjectValueFlags vflags, FieldReferenceBatch batch = null)
-            : base(ctx)
+        public FieldValueReference(
+            SoftDebuggerAdaptor adaptor,
+            EvaluationContext ctx,
+            FieldInfoMirror field,
+            Value obj,
+            TypeMirror declaringType,
+            string vname,
+            ObjectValueFlags vflags,
+            FieldReferenceBatch batch = null)
+            : base(adaptor, ctx)
         {
             this.field = field;
             this.obj = obj;
@@ -100,24 +114,24 @@ namespace Mono.Debugging.Soft
             get { return vname ?? field.Name; }
         }
 
-        public override object Type
+        public override TypeMirror Type
         {
             get { return field.FieldType; }
         }
 
-        public override object DeclaringType
+        public override TypeMirror DeclaringType
         {
             get { return field.DeclaringType; }
         }
 
-        public override object Value
+        public override Value Value
         {
             get
             {
                 if (obj == null)
                 {
                     // If the type hasn't already been loaded, invoke the .cctor() for types w/ the BeforeFieldInit attribute.
-                    Context.Adapter.ForceLoadType(Context, declaringType);
+                    Adaptor.ForceLoadType(Context, declaringType);
 
                     return declaringType.GetValue(field, ((SoftEvaluationContext)Context).Thread);
                 }
@@ -146,7 +160,7 @@ namespace Mono.Debugging.Soft
                     SoftEvaluationContext cx = (SoftEvaluationContext)Context;
                     StringMirror val = (StringMirror)obj;
                     FieldInfo rfield = typeof(string).GetField(field.Name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                    return cx.Session.VirtualMachine.CreateValue(rfield.GetValue(val.Value));
+                    return cx.Session.VirtualMachine.CreateValue(rfield.GetValue(val.Value), cx.Domain);
                 }
                 else
                 {
@@ -155,7 +169,7 @@ namespace Mono.Debugging.Soft
                     if (val.Value == null)
                         return null;
                     FieldInfo rfield = val.Value.GetType().GetField(field.Name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                    return cx.Session.VirtualMachine.CreateValue(rfield.GetValue(val.Value));
+                    return cx.Session.VirtualMachine.CreateValue(rfield.GetValue(val.Value), cx.Domain);
                 }
             }
             set
@@ -185,8 +199,8 @@ namespace Mono.Debugging.Soft
                         sm.Fields[idx] = (Value)value;
 
                         // Structs are handled by-value in the debugger, so the source of the object has to be updated
-                        if (ParentSource != null && obj != null)
-                            ParentSource.Value = obj;
+//                        if (ParentSource != null && obj != null) TODO:
+//                            ParentSource..Value = obj;
                     }
                 }
                 else

@@ -25,25 +25,42 @@
 // THE SOFTWARE.
 
 using System;
+using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Backend
 {
     [Serializable]
     public class EvaluationResult
     {
-        public EvaluationResult(string value)
+        public EvaluationResult(string value, StringPresentationKind kind)
+            : this(value, null, kind)
         {
             Value = value;
         }
 
         public EvaluationResult(string value, string displayValue)
+            : this(value, displayValue, StringPresentationKind.Raw)
         {
             Value = value;
             DisplayValue = displayValue;
         }
 
+        public EvaluationResult(
+            string value,
+            string displayValue = null,
+            StringPresentationKind kind = StringPresentationKind.Raw,
+            string additionalInfo = null)
+        {
+            Value = value;
+            DisplayValue = displayValue ?? value;
+            Kind = kind;
+            AdditionalInfo = additionalInfo;
+        }
+
         public string Value { get; private set; }
         public string DisplayValue { get; private set; }
+        public StringPresentationKind Kind { get; }
+        public string AdditionalInfo { get; }
 
         public override string ToString()
         {

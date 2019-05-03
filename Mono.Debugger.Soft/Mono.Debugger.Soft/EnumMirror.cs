@@ -26,8 +26,8 @@ namespace Mono.Debugger.Soft
 
         public object Value
         {
-            get { return ((PrimitiveValue)Fields[0]).Value; }
-            set { SetField(0, vm.CreateValue(value)); }
+            get => ((PrimitiveValue)Fields[0]).Value;
+            set => SetField(0, vm.CreateValue(value, Type.Assembly.Domain));
         }
 
         public string StringValue

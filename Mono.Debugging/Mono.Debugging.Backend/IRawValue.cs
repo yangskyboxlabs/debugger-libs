@@ -25,15 +25,79 @@
 // THE SOFTWARE.
 
 using System;
-using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Backend
 {
-    public interface IRawValue : IDebuggerBackendObject
+    public interface IRawValue<out TValue> : IRawValue, IDebuggerBackendObject
     {
-        object CallMethod(string name, object[] parameters, EvaluationOptions options);
-        object CallMethod(string name, object[] parameters, out object[] outArgs, EvaluationOptions options);
-        object GetMemberValue(string name, EvaluationOptions options);
-        void SetMemberValue(string name, object value, EvaluationOptions options);
+        TValue TargetObject { get; }
+    }
+
+    public interface IRawValue
+    {
+        bool IsNull { get; }
+    }
+
+    /// <summary>
+    /// Represents primitive value that can be obtained as the value of this runtime
+    /// Non-parametrized surface for <see cref="T:Mono.Debugging.Backend.IRawValuePrimitive`1" /> to expose into public API
+    /// This interface should not be implemented directly. Implement <see cref="T:Mono.Debugging.Backend.IRawValuePrimitive`1" /> instead
+    /// </summary>
+    public interface IRawValuePrimitive : IRawValue
+    {
+        /// <summary>
+        /// Returns primitive value of this runtime corresponding to
+        /// </summary>
+        ValueType Value { get; }
+    }
+
+    public static class IRawValueExtension
+    {
+        public static bool IsPrimitive(this IRawValue value)
+        {
+            return value is IRawValuePrimitive;
+        }
+
+        public static T ToPrimitive<T>(this IRawValue value) where T : struct
+        {
+            return (T)value.ToPrimitive();
+        }
+
+        public static ValueType ToPrimitive(this IRawValue value)
+        {
+            IRawValuePrimitive rawValuePrimitive = value as IRawValuePrimitive;
+            if (rawValuePrimitive == null)
+                throw new InvalidCastException("Cannot unwrap primitive because 'value' is not IRawValuePrimitive");
+            return rawValuePrimitive.Value;
+        }
+
+        public static bool TryToPrimitive<T>(this IRawValue value, out T primitiveValue) where T : struct
+        {
+            primitiveValue = default;
+            if (!(value is IRawValuePrimitive rawValuePrimitive) || !(rawValuePrimitive.Value is T))
+                return false;
+            primitiveValue = (T)rawValuePrimitive.Value;
+            return true;
+        }
+
+        public static bool Is<T>(this IRawValue value) where T : struct
+        {
+            if (!(value is IRawValuePrimitive rawValuePrimitive))
+                return false;
+            return rawValuePrimitive.Value is T;
+        }
+
+        public static bool IsString(this IRawValue value)
+        {
+            return value is IRawValueString;
+        }
+
+        /// <summary>
+        /// Returns null if <paramref name="value" /> is not a string or string value otherwise
+        /// </summary>
+        public static string TryToString(this IRawValue value)
+        {
+            return (value as IRawValueString)?.Value;
+        }
     }
 }

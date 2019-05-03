@@ -33,10 +33,15 @@ namespace Mono.Debugging.Evaluation
     {
         #region AstType
 
-        public static object Resolve(this AstType type, EvaluationContext ctx)
+        public static TType Resolve<TType, TValue>(
+            this AstType type,
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx)
+            where TType : class
+            where TValue : class
         {
-            var args = new List<object>();
-            var name = type.Resolve(ctx, args);
+            var args = new List<TType>();
+            var name = type.Resolve(adaptor, ctx, args);
 
             //if (name.StartsWith ("global::", StringComparison.Ordinal))
             //	name = name.Substring ("global::".Length);
@@ -45,21 +50,27 @@ namespace Mono.Debugging.Evaluation
                 return null;
 
             if (args.Count > 0)
-                return ctx.Adapter.GetType(ctx, name, args.ToArray());
+                return adaptor.GetType(ctx, name, args.ToArray());
 
-            return ctx.Adapter.GetType(ctx, name);
+            return adaptor.GetType(ctx, name);
         }
 
-        static string Resolve(this AstType type, EvaluationContext ctx, List<object> args)
+        static string Resolve<TType, TValue>(
+            this AstType type,
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx,
+            List<TType> args)
+            where TType : class
+            where TValue : class
         {
             if (type is PrimitiveType)
-                return Resolve((PrimitiveType)type, ctx, args);
+                return Resolve((PrimitiveType)type, adaptor, ctx, args);
             else if (type is ComposedType)
-                return Resolve((ComposedType)type, ctx, args);
+                return Resolve((ComposedType)type, adaptor, ctx, args);
             else if (type is MemberType)
-                return Resolve((MemberType)type, ctx, args);
+                return Resolve((MemberType)type, adaptor, ctx, args);
             else if (type is SimpleType)
-                return Resolve((SimpleType)type, ctx, args);
+                return Resolve((SimpleType)type, adaptor, ctx, args);
 
             return null;
         }
@@ -68,18 +79,24 @@ namespace Mono.Debugging.Evaluation
 
         #region ComposedType
 
-        static string Resolve(this ComposedType type, EvaluationContext ctx, List<object> args)
+        static string Resolve<TType, TValue>(
+            this ComposedType type,
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx,
+            List<TType> args)
+            where TType : class
+            where TValue : class
         {
             string name;
 
             if (type.HasNullableSpecifier)
             {
-                args.Insert(0, type.BaseType.Resolve(ctx));
+                args.Insert(0, type.BaseType.Resolve(adaptor, ctx));
                 name = "System.Nullable`1";
             }
             else
             {
-                name = type.BaseType.Resolve(ctx, args);
+                name = type.BaseType.Resolve(adaptor, ctx, args);
             }
 
             if (type.PointerRank > 0)
@@ -103,13 +120,19 @@ namespace Mono.Debugging.Evaluation
 
         #region MemberType
 
-        static string Resolve(this MemberType type, EvaluationContext ctx, List<object> args)
+        static string Resolve<TType, TValue>(
+            this MemberType type,
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx,
+            List<TType> args)
+            where TType : class
+            where TValue : class
         {
             string name;
 
             if (!type.IsDoubleColon)
             {
-                var parent = type.Target.Resolve(ctx, args);
+                var parent = type.Target.Resolve(adaptor, ctx, args);
                 name = parent + "." + type.MemberName;
             }
             else
@@ -122,9 +145,9 @@ namespace Mono.Debugging.Evaluation
                 name += "`" + type.TypeArguments.Count;
                 foreach (var arg in type.TypeArguments)
                 {
-                    object resolved;
+                    TType resolved;
 
-                    if ((resolved = arg.Resolve(ctx)) == null)
+                    if ((resolved = arg.Resolve(adaptor, ctx)) == null)
                         return null;
 
                     args.Add(resolved);
@@ -162,7 +185,12 @@ namespace Mono.Debugging.Evaluation
             }
         }
 
-        static string Resolve(this PrimitiveType type, EvaluationContext ctx, List<object> args)
+        static string Resolve<TType, TValue>(
+            this PrimitiveType type,
+            EvaluationContext ctx,
+            List<TType> args)
+            where TType : class
+            where TValue : class
         {
             return Resolve(type);
         }
@@ -171,7 +199,13 @@ namespace Mono.Debugging.Evaluation
 
         #region SimpleType
 
-        static string Resolve(this SimpleType type, EvaluationContext ctx, List<object> args)
+        static string Resolve<TType, TValue>(
+            this SimpleType type,
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx,
+            List<TType> args)
+            where TType : class
+            where TValue : class
         {
             string name = type.Identifier;
 
@@ -180,9 +214,9 @@ namespace Mono.Debugging.Evaluation
                 name += "`" + type.TypeArguments.Count;
                 foreach (var arg in type.TypeArguments)
                 {
-                    object resolved;
+                    TType resolved;
 
-                    if ((resolved = arg.Resolve(ctx)) == null)
+                    if ((resolved = arg.Resolve(adaptor, ctx)) == null)
                         return null;
 
                     args.Add(resolved);

@@ -36,14 +36,6 @@ namespace Mono.Debugging.Client
         string name;
         string description;
 
-        [NonSerialized]
-        DebuggerSession session;
-
-        internal void Attach(DebuggerSession session)
-        {
-            this.session = session;
-        }
-
         public long Id
         {
             get { return id; }
@@ -69,11 +61,6 @@ namespace Mono.Debugging.Client
         {
             this.id = id;
             this.name = name;
-        }
-
-        public ThreadInfo[] GetThreads()
-        {
-            return session.GetThreads(id);
         }
     }
 }

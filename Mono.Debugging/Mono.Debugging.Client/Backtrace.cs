@@ -11,7 +11,7 @@ namespace Mono.Debugging.Client
         int count;
 
         [NonSerialized]
-        DebuggerSession session;
+        IDebuggerSession session;
 
         List<StackFrame> frames;
 
@@ -26,7 +26,7 @@ namespace Mono.Debugging.Client
                 GetFrame(0, 1);
         }
 
-        internal void Attach(DebuggerSession session)
+        internal void Attach(IDebuggerSession session)
         {
             this.session = session;
             serverBacktrace = session.WrapDebuggerObject(serverBacktrace);

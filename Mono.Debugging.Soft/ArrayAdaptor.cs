@@ -31,7 +31,7 @@ using Mono.Debugging.Evaluation;
 
 namespace Mono.Debugging.Soft
 {
-    public class ArrayAdaptor : ICollectionAdaptor
+    public class ArrayAdaptor : ICollectionAdaptor<TypeMirror, Value>
     {
         readonly ArrayMirror array;
         int[] dimensions, bounds;
@@ -40,6 +40,8 @@ namespace Mono.Debugging.Soft
         {
             this.array = array;
         }
+
+        public Value CollectionObject => array;
 
         public int[] GetLowerBounds()
         {
@@ -65,21 +67,21 @@ namespace Mono.Debugging.Soft
             return dimensions;
         }
 
-        public object GetElement(int[] indices)
+        public Value GetElement(int[] indices)
         {
             int i = GetIndex(indices);
             return array.GetValues(i, 1)[0];
         }
 
-        public Array GetElements(int[] indices, int count)
+        public Value[] GetElements(int[] indices, int count)
         {
             int i = GetIndex(indices);
             return array.GetValues(i, count).ToArray();
         }
 
-        public void SetElement(int[] indices, object val)
+        public void SetElement(int[] indices, Value val)
         {
-            array.SetValues(GetIndex(indices), new Value[] { (Value)val });
+            array.SetValues(GetIndex(indices), new[] { val });
         }
 
         int GetIndex(int[] indices)
@@ -97,9 +99,6 @@ namespace Mono.Debugging.Soft
             return i;
         }
 
-        public object ElementType
-        {
-            get { return array.Type.GetElementType(); }
-        }
+        public TypeMirror ElementType => array.Type.GetElementType();
     }
 }

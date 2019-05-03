@@ -29,13 +29,14 @@ using System;
 
 namespace Mono.Debugging.Evaluation
 {
-    public interface ICollectionAdaptor
+    public interface ICollectionAdaptor<out TType, TValue>
     {
+        TValue CollectionObject { get; }
         int[] GetLowerBounds();
         int[] GetDimensions();
-        object GetElement(int[] indices);
-        Array GetElements(int[] indices, int count);
-        object ElementType { get; }
-        void SetElement(int[] indices, object val);
+        TValue GetElement(int[] indices);
+        TValue[] GetElements(int[] indices, int count);
+        TType ElementType { get; }
+        void SetElement(int[] indices, TValue val);
     }
 }

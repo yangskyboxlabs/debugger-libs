@@ -31,18 +31,20 @@ using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-    public abstract class BaseBacktrace : RemoteFrameObject, IBacktrace
+    public abstract class BaseBacktrace<TType, TValue> : RemoteFrameObject, IBacktrace
+        where TType : class
+        where TValue : class
     {
-        readonly Dictionary<int, FrameInfo> frameInfo = new Dictionary<int, FrameInfo>();
+        readonly Dictionary<int, FrameInfo<TType, TValue>> frameInfo = new Dictionary<int, FrameInfo<TType, TValue>>();
 
-        protected BaseBacktrace(ObjectValueAdaptor adaptor)
+        protected BaseBacktrace(ObjectValueAdaptor<TType, TValue> adaptor)
         {
             Adaptor = adaptor;
         }
 
         public abstract StackFrame[] GetStackFrames(int firstIndex, int lastIndex);
 
-        public ObjectValueAdaptor Adaptor { get; set; }
+        public ObjectValueAdaptor<TType, TValue> Adaptor { get; set; }
 
         protected abstract EvaluationContext GetEvaluationContext(int frameIndex, EvaluationOptions options);
 
@@ -61,13 +63,13 @@ namespace Mono.Debugging.Evaluation
                     foreach (var local in frame.LocalVariables)
                         list.Add(local.CreateObjectValue(false, options));
 
-                    return ObjectValue.CreateArray(null, new ObjectPath("Local Variables"), "", list.Count, ObjectValueFlags.EvaluatingGroup, list.ToArray());
+                    return ObjectValue.CreateArray(null, new ObjectPath("Local Variables"), "", new[] { list.Count }, ObjectValueFlags.EvaluatingGroup, list.ToArray());
                 });
 
                 return new[] { val };
             }
 
-            foreach (ValueReference local in frame.LocalVariables)
+            foreach (ValueReference<TType, TValue> local in frame.LocalVariables)
                 list.Add(local.CreateObjectValue(true, options));
 
             return list.ToArray();
@@ -86,7 +88,7 @@ namespace Mono.Debugging.Evaluation
                     foreach (var param in frame.Parameters)
                         values.Add(param.CreateObjectValue(false, options));
 
-                    return ObjectValue.CreateArray(null, new ObjectPath("Parameters"), "", values.Count, ObjectValueFlags.EvaluatingGroup, values.ToArray());
+                    return ObjectValue.CreateArray(null, new ObjectPath("Parameters"), "", new[] { values.Count }, ObjectValueFlags.EvaluatingGroup, values.ToArray());
                 });
 
                 return new[] { value };
@@ -114,7 +116,7 @@ namespace Mono.Debugging.Evaluation
                     else
                         values = new ObjectValue [0];
 
-                    return ObjectValue.CreateArray(null, new ObjectPath("this"), "", values.Length, ObjectValueFlags.EvaluatingGroup, values);
+                    return ObjectValue.CreateArray(null, new ObjectPath("this"), "", new[] { values.Length }, ObjectValueFlags.EvaluatingGroup, values);
                 });
             }
 
@@ -138,7 +140,7 @@ namespace Mono.Debugging.Evaluation
                     else
                         values = new ObjectValue [0];
 
-                    return ObjectValue.CreateArray(null, new ObjectPath(options.CurrentExceptionTag), "", values.Length, ObjectValueFlags.EvaluatingGroup, values);
+                    return ObjectValue.CreateArray(null, new ObjectPath(options.CurrentExceptionTag), "", new[] { values.Length }, ObjectValueFlags.EvaluatingGroup, values);
                 });
             }
             else if (frame.Exception != null)
@@ -153,9 +155,11 @@ namespace Mono.Debugging.Evaluation
             return new ExceptionInfo(value);
         }
 
-        public virtual ObjectValue GetExceptionInstance(int frameIndex, EvaluationOptions options)
+        public virtual ObjectValue GetExceptionInstance(
+            int frameIndex,
+            EvaluationOptions options)
         {
-            var frame = GetFrameInfo(frameIndex, options, false);
+            FrameInfo<TType, TValue> frame = GetFrameInfo(frameIndex, options, false);
 
             if (frame == null)
             {
@@ -169,7 +173,7 @@ namespace Mono.Debugging.Evaluation
                     else
                         values = new ObjectValue [0];
 
-                    return ObjectValue.CreateArray(null, new ObjectPath(options.CurrentExceptionTag), "", values.Length, ObjectValueFlags.EvaluatingGroup, values);
+                    return ObjectValue.CreateArray(null, new ObjectPath(options.CurrentExceptionTag), "", new[] { values.Length }, ObjectValueFlags.EvaluatingGroup, values);
                 });
             }
 
@@ -196,7 +200,11 @@ namespace Mono.Debugging.Evaluation
             return locals.ToArray();
         }
 
-        public virtual ObjectValue[] GetExpressionValues(int frameIndex, string[] expressions, EvaluationOptions options)
+        public virtual ObjectValue[] GetExpressionValues(
+            int frameIndex,
+            string[] expressions,
+            EvaluationOptions options,
+            SourceLocation location)
         {
             if (Adaptor.IsEvaluating)
             {
@@ -218,13 +226,13 @@ namespace Mono.Debugging.Evaluation
 
             var ctx = GetEvaluationContext(frameIndex, options);
 
-            return ctx.Adapter.GetExpressionValuesAsync(ctx, expressions);
+            return Adaptor.GetExpressionValuesAsync(ctx, expressions);
         }
 
         public virtual CompletionData GetExpressionCompletionData(int frameIndex, string exp)
         {
             var ctx = GetEvaluationContext(frameIndex, EvaluationOptions.DefaultOptions);
-            return ctx.Adapter.GetExpressionCompletionData(ctx, exp);
+            return Adaptor.GetExpressionCompletionData(ctx, exp);
         }
 
         public virtual AssemblyLine[] Disassemble(int frameIndex, int firstLine, int count)
@@ -232,15 +240,9 @@ namespace Mono.Debugging.Evaluation
             throw new NotImplementedException();
         }
 
-        public virtual ValidationResult ValidateExpression(int frameIndex, string expression, EvaluationOptions options)
+        FrameInfo<TType, TValue> GetFrameInfo(int frameIndex, EvaluationOptions options, bool ignoreEvalStatus)
         {
-            var ctx = GetEvaluationContext(frameIndex, options);
-            return Adaptor.ValidateExpression(ctx, expression);
-        }
-
-        FrameInfo GetFrameInfo(int frameIndex, EvaluationOptions options, bool ignoreEvalStatus)
-        {
-            FrameInfo finfo;
+            FrameInfo<TType, TValue> finfo;
 
             if (frameInfo.TryGetValue(frameIndex, out finfo))
                 return finfo;
@@ -252,17 +254,17 @@ namespace Mono.Debugging.Evaluation
             if (ctx == null)
                 return null;
 
-            finfo = new FrameInfo();
+            finfo = new FrameInfo<TType, TValue>();
             finfo.Context = ctx;
 
             //Don't try to optimize lines below with lazy loading, you won't gain anything(in communication with runtime)
-            finfo.LocalVariables.AddRange(ctx.Evaluator.GetLocalVariables(ctx));
-            finfo.Parameters.AddRange(ctx.Evaluator.GetParameters(ctx));
-            finfo.This = ctx.Evaluator.GetThisReference(ctx);
+            finfo.LocalVariables.AddRange(Adaptor.Evaluator.GetLocalVariables(ctx));
+            finfo.Parameters.AddRange(Adaptor.Evaluator.GetParameters(ctx));
+            finfo.This = Adaptor.Evaluator.GetThisReference(ctx);
 
-            var exp = ctx.Evaluator.GetCurrentException(ctx);
+            var exp = Adaptor.Evaluator.GetCurrentException(ctx);
             if (exp != null)
-                finfo.Exception = new ExceptionInfoSource(ctx, exp);
+                finfo.Exception = new ExceptionInfoSource<TType, TValue>(ctx, exp);
 
             frameInfo[frameIndex] = finfo;
 
@@ -270,12 +272,14 @@ namespace Mono.Debugging.Evaluation
         }
     }
 
-    class FrameInfo
+    class FrameInfo<TType, TValue>
+        where TType : class
+        where TValue : class
     {
         public EvaluationContext Context;
-        public List<ValueReference> LocalVariables = new List<ValueReference>();
-        public List<ValueReference> Parameters = new List<ValueReference>();
-        public ValueReference This;
-        public ExceptionInfoSource Exception;
+        public List<ValueReference<TType, TValue>> LocalVariables = new List<ValueReference<TType, TValue>>();
+        public List<ValueReference<TType, TValue>> Parameters = new List<ValueReference<TType, TValue>>();
+        public ValueReference<TType, TValue> This;
+        public ExceptionInfoSource<TType, TValue> Exception;
     }
 }

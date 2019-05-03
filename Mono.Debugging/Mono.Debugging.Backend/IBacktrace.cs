@@ -12,9 +12,8 @@ namespace Mono.Debugging.Backend
         ObjectValue GetThisReference(int frameIndex, EvaluationOptions options);
         ExceptionInfo GetException(int frameIndex, EvaluationOptions options);
         ObjectValue[] GetAllLocals(int frameIndex, EvaluationOptions options);
-        ObjectValue[] GetExpressionValues(int frameIndex, string[] expressions, EvaluationOptions options);
+        ObjectValue[] GetExpressionValues(int frameIndex, string[] expressions, EvaluationOptions options, SourceLocation location);
         CompletionData GetExpressionCompletionData(int frameIndex, string exp);
         AssemblyLine[] Disassemble(int frameIndex, int firstLine, int count);
-        ValidationResult ValidateExpression(int frameIndex, string expression, EvaluationOptions options);
     }
 }

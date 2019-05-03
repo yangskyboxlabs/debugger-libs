@@ -29,23 +29,23 @@ using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-    public class UserVariableReference : ValueReference
+    public class UserVariableReference<TType, TValue> : ValueReference<TType, TValue>
+        where TType : class
+        where TValue : class
     {
         readonly string name;
-        object currentValue;
+        TValue currentValue;
 
-        public UserVariableReference(EvaluationContext ctx, string name)
-            : base(ctx)
+        public UserVariableReference(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx,
+            string name)
+            : base(adaptor, ctx)
         {
             this.name = name;
         }
 
-        public override string Name
-        {
-            get { return name; }
-        }
-
-        public override object Value
+        public override TValue Value
         {
             get
             {
@@ -54,17 +54,13 @@ namespace Mono.Debugging.Evaluation
 
                 throw new EvaluatorException("Value undefined.");
             }
-            set { currentValue = value; }
+            set => currentValue = value;
         }
 
-        public override object Type
-        {
-            get { return Context.Adapter.GetValueType(Context, Value); }
-        }
+        public override string Name => name;
 
-        public override ObjectValueFlags Flags
-        {
-            get { return ObjectValueFlags.Variable; }
-        }
+        public override TType Type => Adaptor.GetValueType(Context, Value);
+
+        public override ObjectValueFlags Flags => ObjectValueFlags.Variable;
     }
 }

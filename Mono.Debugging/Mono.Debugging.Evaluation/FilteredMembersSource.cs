@@ -34,16 +34,26 @@ using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-    public class FilteredMembersSource : RemoteFrameObject, IObjectValueSource
+    public class FilteredMembersSource<TType, TValue> : RemoteFrameObject, IObjectValueSource
+        where TType : class
+        where TValue : class
     {
-        object obj;
-        object type;
-        EvaluationContext ctx;
-        BindingFlags bindingFlags;
-        IObjectSource objectSource;
+        readonly TValue obj;
+        readonly TType type;
+        readonly EvaluationContext ctx;
+        readonly BindingFlags bindingFlags;
+        readonly IObjectSource<TValue> objectSource;
+        readonly ObjectValueAdaptor<TType, TValue> adaptor;
 
-        public FilteredMembersSource(EvaluationContext ctx, IObjectSource objectSource, object type, object obj, BindingFlags bindingFlags)
+        public FilteredMembersSource(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx,
+            IObjectSource<TValue> objectSource,
+            TType type,
+            TValue obj,
+            BindingFlags bindingFlags)
         {
+            this.adaptor = adaptor;
             this.ctx = ctx;
             this.obj = obj;
             this.type = type;
@@ -51,39 +61,24 @@ namespace Mono.Debugging.Evaluation
             this.objectSource = objectSource;
         }
 
-        public static ObjectValue CreateNonPublicsNode(EvaluationContext ctx, IObjectSource objectSource, object type, object obj, BindingFlags bindingFlags)
-        {
-            return CreateNode(ctx, objectSource, type, obj, bindingFlags, "Non-public members");
-        }
-
-        public static ObjectValue CreateStaticsNode(EvaluationContext ctx, IObjectSource objectSource, object type, object obj, BindingFlags bindingFlags)
-        {
-            return CreateNode(ctx, objectSource, type, obj, bindingFlags, "Static members");
-        }
-
-        static ObjectValue CreateNode(EvaluationContext ctx, IObjectSource objectSource, object type, object obj, BindingFlags bindingFlags, string label)
-        {
-            FilteredMembersSource src = new FilteredMembersSource(ctx, objectSource, type, obj, bindingFlags);
-            src.Connect();
-            ObjectValue val = ObjectValue.CreateObject(src, new ObjectPath(label), "", "", ObjectValueFlags.Group | ObjectValueFlags.ReadOnly | ObjectValueFlags.NoRefresh, null);
-            val.ChildSelector = "";
-            return val;
-        }
-
-        public ObjectValue[] GetChildren(ObjectPath path, int index, int count, EvaluationOptions options)
+        public ObjectValue[] GetChildren(
+            ObjectPath path,
+            int index,
+            int count,
+            EvaluationOptions options)
         {
             EvaluationContext cctx = ctx.WithOptions(options);
-            var names = new ObjectValueNameTracker(cctx);
-            object tdataType = null;
+            var names = new ObjectValueNameTracker<TType, TValue>(adaptor, cctx);
+            TType tdataType = null;
             TypeDisplayData tdata = null;
             List<ObjectValue> list = new List<ObjectValue>();
-            foreach (ValueReference val in cctx.Adapter.GetMembersSorted(cctx, objectSource, type, obj, bindingFlags))
+            foreach (ValueReference<TType, TValue> val in adaptor.GetMembersSorted(cctx, objectSource, type, obj, bindingFlags))
             {
-                object decType = val.DeclaringType;
+                TType decType = val.DeclaringType;
                 if (decType != null && decType != tdataType)
                 {
                     tdataType = decType;
-                    tdata = cctx.Adapter.GetTypeDisplayData(cctx, decType);
+                    tdata = adaptor.GetTypeDisplayData(cctx, decType);
                 }
 
                 DebuggerBrowsableState state = tdata.GetMemberBrowsableState(val.Name);
@@ -98,7 +93,7 @@ namespace Mono.Debugging.Evaluation
             {
                 BindingFlags newFlags = bindingFlags | BindingFlags.NonPublic;
                 newFlags &= ~BindingFlags.Public;
-                list.Add(CreateNonPublicsNode(cctx, objectSource, type, obj, newFlags));
+                list.Add(FilteredMembersSource.CreateNonPublicsNode(adaptor, cctx, objectSource, type, obj, newFlags));
             }
 
             return list.ToArray();
@@ -114,14 +109,61 @@ namespace Mono.Debugging.Evaluation
             throw new NotSupportedException();
         }
 
-        public object GetRawValue(ObjectPath path, EvaluationOptions options)
+        public IRawValue GetRawValue(ObjectPath path, EvaluationOptions options)
         {
             throw new NotImplementedException();
         }
 
-        public void SetRawValue(ObjectPath path, object value, EvaluationOptions options)
+        public void SetRawValue(ObjectPath path, IRawValue value, EvaluationOptions options)
         {
             throw new NotImplementedException();
+        }
+    }
+
+    public static class FilteredMembersSource
+    {
+        public static ObjectValue CreateNonPublicsNode<TType, TValue>(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx,
+            IObjectSource<TValue> objectSource,
+            TType type,
+            TValue obj,
+            BindingFlags bindingFlags)
+            where TType : class
+            where TValue : class
+        {
+            return CreateNode(adaptor, ctx, objectSource, type, obj, bindingFlags, "Non-public members");
+        }
+
+        public static ObjectValue CreateStaticsNode<TType, TValue>(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx,
+            IObjectSource<TValue> objectSource,
+            TType type,
+            TValue obj,
+            BindingFlags bindingFlags)
+            where TType : class
+            where TValue : class
+        {
+            return CreateNode(adaptor, ctx, objectSource, type, obj, bindingFlags, "Static members");
+        }
+
+        static ObjectValue CreateNode<TType, TValue>(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx,
+            IObjectSource<TValue> objectSource,
+            TType type,
+            TValue obj,
+            BindingFlags bindingFlags,
+            string label)
+            where TType : class
+            where TValue : class
+        {
+            FilteredMembersSource<TType, TValue> src = new FilteredMembersSource<TType, TValue>(adaptor, ctx, objectSource, type, obj, bindingFlags);
+            src.Connect();
+            ObjectValue val = ObjectValue.CreateObject(src, new ObjectPath(label), "", "", ObjectValueFlags.Group | ObjectValueFlags.ReadOnly | ObjectValueFlags.NoRefresh, null);
+            val.ChildSelector = "";
+            return val;
         }
     }
 }

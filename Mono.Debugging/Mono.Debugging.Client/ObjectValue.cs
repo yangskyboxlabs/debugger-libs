@@ -41,10 +41,10 @@ namespace Mono.Debugging.Client
         int arrayCount = -1;
         bool isNull;
         string name;
-        string value;
         string typeName;
         string displayValue;
         string childSelector;
+        EvaluationResult value;
         ObjectValueFlags flags;
         IObjectValueSource source;
         IObjectValueUpdater updater;
@@ -77,12 +77,18 @@ namespace Mono.Debugging.Client
             return CreateObject(source, path, typeName, new EvaluationResult(value), flags, children);
         }
 
-        public static ObjectValue CreateObject(IObjectValueSource source, ObjectPath path, string typeName, EvaluationResult value, ObjectValueFlags flags, ObjectValue[] children)
+        public static ObjectValue CreateObject(
+            IObjectValueSource source,
+            ObjectPath path,
+            string typeName,
+            EvaluationResult value,
+            ObjectValueFlags flags,
+            ObjectValue[] children)
         {
             var val = Create(source, path, typeName);
             val.flags = flags | ObjectValueFlags.Object;
             val.displayValue = value.DisplayValue;
-            val.value = value.Value;
+            val.value = value;
             val.path = path;
 
             if (children != null)
@@ -103,26 +109,51 @@ namespace Mono.Debugging.Client
         {
             var val = Create(source, path, typeName);
             val.flags = flags | ObjectValueFlags.Object;
-            val.value = "(null)";
+            val.value = new EvaluationResult("null");
             val.isNull = true;
             return val;
         }
 
-        public static ObjectValue CreatePrimitive(IObjectValueSource source, ObjectPath path, string typeName, EvaluationResult value, ObjectValueFlags flags)
+        public static ObjectValue CreatePointer(
+            IObjectValueSource source,
+            ObjectPath path,
+            string typeName,
+            EvaluationResult value,
+            ObjectValueFlags flags)
+        {
+            var objectValue = Create(source, path, typeName);
+            objectValue.flags = flags | ObjectValueFlags.Object;
+            objectValue.value = value;
+            return objectValue;
+        }
+
+        public static ObjectValue CreatePrimitive(
+            IObjectValueSource source,
+            ObjectPath path,
+            string typeName,
+            EvaluationResult value,
+            ObjectValueFlags flags)
         {
             var val = Create(source, path, typeName);
             val.flags = flags | ObjectValueFlags.Primitive;
             val.displayValue = value.DisplayValue;
-            val.value = value.Value;
+            val.value = value;
             return val;
         }
 
-        public static ObjectValue CreateArray(IObjectValueSource source, ObjectPath path, string typeName, int arrayCount, ObjectValueFlags flags, ObjectValue[] children)
+        public static ObjectValue CreateArray(
+            IObjectValueSource source,
+            ObjectPath path,
+            string typeName,
+            int[] dimensions,
+            ObjectValueFlags flags,
+            ObjectValue[] children)
         {
             var val = Create(source, path, typeName);
             val.flags = flags | ObjectValueFlags.Array;
-            val.value = "[" + arrayCount + "]";
-            val.arrayCount = arrayCount;
+            string str = dimensions.Length != 1 ? "Rank = [" + string.Join(",", dimensions) + "]" : "Count = " + dimensions[0];
+            val.value = new EvaluationResult(str);
+            val.arrayCount = dimensions[0];
 
             if (children != null && children.Length > 0)
             {
@@ -133,7 +164,27 @@ namespace Mono.Debugging.Client
             return val;
         }
 
-        public static ObjectValue CreateUnknown(IObjectValueSource source, ObjectPath path, string typeName)
+        public static ObjectValue CreateUnknown(
+            IObjectValueSource source,
+            ObjectPath path,
+            string typeName,
+            string message = null)
+        {
+            ObjectValue objectValue = Create(source, path, typeName);
+            objectValue.value = new EvaluationResult(message);
+            objectValue.flags = ObjectValueFlags.Unknown | ObjectValueFlags.ReadOnly;
+            return objectValue;
+        }
+
+        public static ObjectValue CreateUnknown(string name, string message = null)
+        {
+            return CreateUnknown(null, new ObjectPath(name), "", message);
+        }
+
+        public static ObjectValue CreateUnknown(
+            IObjectValueSource source,
+            ObjectPath path,
+            string typeName)
         {
             var val = Create(source, path, typeName);
             val.flags = ObjectValueFlags.Unknown | ObjectValueFlags.ReadOnly;
@@ -145,40 +196,60 @@ namespace Mono.Debugging.Client
             return CreateUnknown(null, new ObjectPath(name), "");
         }
 
-        public static ObjectValue CreateError(IObjectValueSource source, ObjectPath path, string typeName, string value, ObjectValueFlags flags)
+        public static ObjectValue CreateError(
+            IObjectValueSource source,
+            ObjectPath path,
+            string typeName,
+            string value,
+            ObjectValueFlags flags)
         {
             var val = Create(source, path, typeName);
             val.flags = flags | ObjectValueFlags.Error;
-            val.value = value;
+            val.value = new EvaluationResult(value);
             return val;
         }
 
-        public static ObjectValue CreateImplicitNotSupported(IObjectValueSource source, ObjectPath path, string typeName, ObjectValueFlags flags)
+        public static ObjectValue CreateImplicitNotSupported(
+            IObjectValueSource source,
+            ObjectPath path,
+            string typeName,
+            ObjectValueFlags flags)
         {
             var val = Create(source, path, typeName);
             val.flags = flags | ObjectValueFlags.ImplicitNotSupported;
-            val.value = "Implicit evaluation is disabled";
+            val.value = new EvaluationResult("Implicit evaluation is disabled");
             return val;
         }
 
-        public static ObjectValue CreateNotSupported(IObjectValueSource source, ObjectPath path, string typeName, string message, ObjectValueFlags flags)
+        public static ObjectValue CreateNotSupported(
+            IObjectValueSource source,
+            ObjectPath path,
+            string typeName,
+            string message,
+            ObjectValueFlags flags)
         {
             var val = Create(source, path, typeName);
             val.flags = flags | ObjectValueFlags.NotSupported;
-            val.value = message;
+            val.value = new EvaluationResult(message);
             return val;
         }
 
-        public static ObjectValue CreateFatalError(string name, string message, ObjectValueFlags flags)
+        public static ObjectValue CreateFatalError(
+            string name,
+            string message,
+            ObjectValueFlags flags)
         {
             var val = new ObjectValue();
             val.flags = flags | ObjectValueFlags.Error;
-            val.value = message;
+            val.value = new EvaluationResult(message);
             val.name = name;
             return val;
         }
 
-        public static ObjectValue CreateEvaluating(IObjectValueUpdater updater, ObjectPath path, ObjectValueFlags flags)
+        public static ObjectValue CreateEvaluating(
+            IObjectValueUpdater updater,
+            ObjectPath path,
+            ObjectValueFlags flags)
         {
             var val = Create(null, path, null);
             val.flags = flags | ObjectValueFlags.Evaluating;
@@ -233,20 +304,8 @@ namespace Mono.Debugging.Client
         /// </remarks>
         public virtual string Value
         {
-            get { return value; }
-            set
-            {
-                if (IsReadOnly || source == null)
-                    throw new InvalidOperationException("Value is not editable");
-
-                EvaluationResult res = source.SetValue(path, value, null);
-                if (res != null)
-                {
-                    this.value = res.Value;
-                    displayValue = res.DisplayValue;
-                    isNull = value == null;
-                }
-            }
+            get { return value.Value; }
+            set { SetValue(value); }
         }
 
         /// <summary>
@@ -290,11 +349,15 @@ namespace Mono.Debugging.Client
         {
             if (IsReadOnly || source == null)
                 throw new InvalidOperationException("Value is not editable");
+
+            if (IsReadOnly || source == null)
+                throw new InvalidOperationException("Value is not editable");
             EvaluationResult res = source.SetValue(path, value, options);
             if (res != null)
             {
-                this.value = res.Value;
+                this.value = res;
                 displayValue = res.DisplayValue;
+                isNull = value == null;
             }
         }
 
@@ -311,7 +374,7 @@ namespace Mono.Debugging.Client
         /// will be returned. RawValue can be used to get and set members of an object, and to call methods.
         /// If this ObjectValue refers to an array, then a RawValueArray object will be returned.
         /// </remarks>
-        public object GetRawValue()
+        public IRawValue GetRawValue()
         {
             EvaluationOptions ops = parentFrame.DebuggerSession.EvaluationOptions.Clone();
             ops.EllipsizeStrings = false;
@@ -335,21 +398,17 @@ namespace Mono.Debugging.Client
         /// will be returned. RawValue can be used to get and set members of an object, and to call methods.
         /// If this ObjectValue refers to an array, then a RawValueArray object will be returned.
         /// </remarks>
-        public object GetRawValue(EvaluationOptions options)
+        public IRawValue GetRawValue(EvaluationOptions options)
         {
             if (source == null && (IsEvaluating || IsEvaluatingGroup))
             {
                 if (!WaitHandle.WaitOne(options.EvaluationTimeout))
                 {
-                    throw new Mono.Debugging.Evaluation.TimeOutException();
+                    throw new Evaluation.TimeOutException();
                 }
             }
 
-            object res = source.GetRawValue(path, options);
-            IRawObject val = res as IRawObject;
-            if (val != null)
-                val.Connect(parentFrame.DebuggerSession, options);
-            return res;
+            return source.GetRawValue(path, options);
         }
 
         /// <summary>
@@ -361,7 +420,7 @@ namespace Mono.Debugging.Client
         /// <remarks>
         /// The provided value can be a primitive type, a RawValue object or a RawValueArray object.
         /// </remarks>
-        public void SetRawValue(object value)
+        public void SetRawValue(IRawValue value)
         {
             SetRawValue(value, parentFrame.DebuggerSession.EvaluationOptions);
         }
@@ -378,13 +437,13 @@ namespace Mono.Debugging.Client
         /// <remarks>
         /// The provided value can be a primitive type, a RawValue object or a RawValueArray object.
         /// </remarks>
-        public void SetRawValue(object value, EvaluationOptions options)
+        public void SetRawValue(IRawValue value, EvaluationOptions options)
         {
             if (source == null && (IsEvaluating || IsEvaluatingGroup))
             {
                 if (!WaitHandle.WaitOne(options.EvaluationTimeout))
                 {
-                    throw new Mono.Debugging.Evaluation.TimeOutException();
+                    throw new Evaluation.TimeOutException();
                 }
             }
 

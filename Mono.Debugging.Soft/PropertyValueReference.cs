@@ -33,19 +33,27 @@ namespace Mono.Debugging.Soft
 {
     public class PropertyValueReference : SoftValueReference
     {
-        PropertyInfoMirror property;
-        TypeMirror declaringType;
-        ObjectValueFlags flags;
-        MethodMirror getter;
-        Value[] indexerArgs;
-        object obj, value;
+        readonly PropertyInfoMirror property;
+        readonly TypeMirror declaringType;
+        readonly ObjectValueFlags flags;
+        readonly MethodMirror getter;
+        readonly Value[] indexerArgs;
+        readonly Value obj;
+        Value value;
         bool haveValue;
         bool safe;
 
-        public PropertyValueReference(EvaluationContext ctx, PropertyInfoMirror property, object obj, TypeMirror declaringType, MethodMirror getter, Value[] indexerArgs)
-            : base(ctx)
+        public PropertyValueReference(
+            SoftDebuggerAdaptor adaptor,
+            EvaluationContext ctx,
+            PropertyInfoMirror property,
+            Value obj,
+            TypeMirror declaringType,
+            MethodMirror getter,
+            Value[] indexerArgs)
+            : base(adaptor, ctx)
         {
-            this.safe = Context.Adapter.IsSafeToInvokeMethod(ctx, getter, obj ?? declaringType);
+            //this.safe = Adaptor.IsSafeToInvokeMethod(ctx, getter, obj ?? declaringType.));
             this.declaringType = declaringType;
             this.indexerArgs = indexerArgs;
             this.property = property;
@@ -89,47 +97,35 @@ namespace Mono.Debugging.Soft
             return flags;
         }
 
-        public override ObjectValueFlags Flags
+        public override ObjectValueFlags Flags => flags;
+
+        public override string Name => property.Name;
+
+        public override TypeMirror Type => property.PropertyType;
+
+        public override TypeMirror DeclaringType => property.DeclaringType;
+
+        public override Value Value
         {
-            get { return flags; }
+            get => GetValue(Context);
+            set => SetValue(Context, value);
         }
 
-        public override string Name
-        {
-            get { return property.Name; }
-        }
-
-        public override object Type
-        {
-            get { return property.PropertyType; }
-        }
-
-        public override object DeclaringType
-        {
-            get { return property.DeclaringType; }
-        }
-
-        public override object Value
-        {
-            get { return GetValue(Context); }
-            set { SetValue(Context, value); }
-        }
-
-        public override object GetValue(EvaluationContext ctx)
+        public override Value GetValue(EvaluationContext ctx)
         {
             if (!haveValue)
             {
                 if (!safe)
                     throw new EvaluatorException("This property is not safe to evaluate.");
 
-                value = ((SoftEvaluationContext)ctx).RuntimeInvoke(getter, obj ?? declaringType, indexerArgs);
+                value = Invocator.RuntimeInvoke(ctx, getter, declaringType, obj, indexerArgs).Result;
                 haveValue = true;
             }
 
             return value;
         }
 
-        public override void SetValue(EvaluationContext ctx, object value)
+        public override void SetValue(EvaluationContext ctx, Value value)
         {
             ctx.AssertTargetInvokeAllowed();
 
@@ -146,7 +142,7 @@ namespace Mono.Debugging.Soft
             this.value = null;
             haveValue = false;
 
-            ((SoftEvaluationContext)ctx).RuntimeInvoke(setter, obj ?? declaringType, args);
+            Invocator.RuntimeInvoke(ctx, setter, declaringType, obj, args);
 
             this.value = value;
             haveValue = true;

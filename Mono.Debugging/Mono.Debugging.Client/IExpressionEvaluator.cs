@@ -29,9 +29,11 @@ using Mono.Debugging.Evaluation;
 
 namespace Mono.Debugging.Client
 {
-    public interface IExpressionEvaluator
+    public interface IExpressionEvaluator<TType, TValue>
+        where TType : class
+        where TValue : class
     {
-        ExpressionEvaluator Evaluator { get; }
+        ExpressionEvaluator<TType, TValue> Evaluator { get; }
         ObjectValue[] GetLocals(StackFrame sf);
     }
 }

@@ -25,230 +25,290 @@
 // THE SOFTWARE.
 
 using System;
-using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using Mono.Debugging.Backend;
 using Mono.Debugging.Client;
+using Mono.Debugging.Evaluation.RuntimeInvocation;
 
 namespace Mono.Debugging.Evaluation
 {
-    class RemoteRawValue : RemoteFrameObject, IRawValue
+    internal class RemoteRawValueBase<TType, TValue> : IRawValue<TValue>
+        where TType : class
+        where TValue : class
     {
-        readonly EvaluationContext ctx;
-        readonly IObjectSource source;
-        readonly object targetObject;
+        public EvaluationContext Context { get; }
 
-        public RemoteRawValue(EvaluationContext gctx, IObjectSource source, object targetObject)
+        public ObjectValueAdaptor<TType, TValue> Adaptor { get; }
+
+        public TValue TargetObject { get; }
+
+        public bool IsNull => Adaptor.IsNull(Context, TargetObject);
+
+        public RemoteRawValueBase(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx,
+            TValue targetObject)
         {
-            this.ctx = gctx.Clone();
-            ctx.Options.AllowTargetInvoke = true;
-            ctx.Options.AllowMethodEvaluation = true;
-            this.targetObject = targetObject;
-            this.source = source;
-            Connect();
+            Adaptor = adaptor;
+            Context = ctx;
+            TargetObject = targetObject;
         }
-
-        public object TargetObject
-        {
-            get { return targetObject; }
-        }
-
-        #region IRawValue implementation
-
-        public object CallMethod(string name, object[] parameters, EvaluationOptions options)
-        {
-            object[] outArgs;
-            return CallMethod(name, parameters, false, out outArgs, options);
-        }
-
-        public object CallMethod(string name, object[] parameters, out object[] outArgs, EvaluationOptions options)
-        {
-            return CallMethod(name, parameters, true, out outArgs, options);
-        }
-
-        private object CallMethod(string name, object[] parameters, bool enableOutArgs, out object[] outArgs, EvaluationOptions options)
-        {
-            var localContext = ctx.WithOptions(options);
-
-            var argValues = new object [parameters.Length];
-            var argTypes = new object [parameters.Length];
-
-            for (int n = 0; n < argValues.Length; n++)
-            {
-                argValues[n] = localContext.Adapter.FromRawValue(localContext, parameters[n]);
-                argTypes[n] = localContext.Adapter.GetValueType(localContext, argValues[n]);
-            }
-
-            var type = localContext.Adapter.GetValueType(localContext, targetObject);
-            if (enableOutArgs)
-            {
-                object[] outArgsTemp;
-                var res = localContext.Adapter.RuntimeInvoke(localContext, type, targetObject, name, null, argTypes, argValues, out outArgsTemp);
-                outArgs = new object[outArgsTemp.Length];
-                for (int i = 0; i < outArgs.Length; i++)
-                {
-                    outArgs[i] = localContext.Adapter.ToRawValue(localContext, null, outArgsTemp[i]);
-                }
-
-                return localContext.Adapter.ToRawValue(localContext, null, res);
-            }
-            else
-            {
-                outArgs = null;
-                var res = localContext.Adapter.RuntimeInvoke(localContext, type, targetObject, name, argTypes, argValues);
-                return localContext.Adapter.ToRawValue(localContext, null, res);
-            }
-        }
-
-        public object GetMemberValue(string name, EvaluationOptions options)
-        {
-            var localContext = ctx.WithOptions(options);
-            var type = localContext.Adapter.GetValueType(localContext, targetObject);
-            var val = localContext.Adapter.GetMember(localContext, source, type, targetObject, name);
-
-            if (val == null)
-                throw new EvaluatorException("Member '{0}' not found", name);
-
-            return localContext.Adapter.ToRawValue(localContext, val, val.Value);
-        }
-
-        public void SetMemberValue(string name, object value, EvaluationOptions options)
-        {
-            var localContext = ctx.WithOptions(options);
-            var type = localContext.Adapter.GetValueType(localContext, targetObject);
-            var val = localContext.Adapter.GetMember(localContext, source, type, targetObject, name);
-
-            if (val == null)
-                throw new EvaluatorException("Member '{0}' not found", name);
-
-            val.Value = localContext.Adapter.FromRawValue(localContext, value);
-        }
-
-        #endregion
     }
 
-    class RemoteRawValueArray : RemoteFrameObject, IRawValueArray
+    public interface IRawValueArray<TValue> : IRawValueArray, IRawValue<TValue>
     {
-        readonly ICollectionAdaptor targetArray;
-        readonly EvaluationContext ctx;
-        readonly IObjectSource source;
-        readonly object targetObject;
+        IRawValue<TValue> GetValue(int[] index);
 
-        public RemoteRawValueArray(EvaluationContext ctx, IObjectSource source, ICollectionAdaptor targetArray, object targetObject)
+        IRawValue<TValue>[] GetValues(int[] index, int count);
+
+        void SetValue(int[] index, IRawValue<TValue> value);
+    }
+
+    class RemoteRawValueArray<TType, TValue> : RemoteRawValueBase<TType, TValue>, IRawValueArray<TValue>
+        where TType : class
+        where TValue : class
+    {
+        readonly ICollectionAdaptor<TType, TValue> targetArray;
+        readonly EvaluationContext ctx;
+        readonly IDebuggerHierarchicalObject source;
+
+        public RemoteRawValueArray(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx,
+            IDebuggerHierarchicalObject source,
+            ICollectionAdaptor<TType, TValue> targetArray)
+            : base(adaptor, ctx, targetArray.CollectionObject)
         {
             this.ctx = ctx;
             this.targetArray = targetArray;
-            this.targetObject = targetObject;
             this.source = source;
-            Connect();
         }
 
-        public object TargetObject
+        public IRawValue<TValue> GetValue(int[] index)
         {
-            get { return targetObject; }
+            return Adaptor.ToRawValue(ctx, source, targetArray.GetElement(index));
         }
 
-        public object GetValue(int[] index)
+        public IRawValue<TValue>[] GetValues(int[] index, int count)
         {
-            return ctx.Adapter.ToRawValue(ctx, source, targetArray.GetElement(index));
-        }
-
-        public Array GetValues(int[] index, int count)
-        {
-            var values = targetArray.GetElements(index, count);
+            TValue[] values = targetArray.GetElements(index, count);
             var idx = new int[index.Length];
-            var array = new ArrayList();
+            var rawValues = new List<IRawValue<TValue>>();
 
             for (int i = 0; i < index.Length; i++)
                 idx[i] = index[i];
 
-            Type commonType = null;
+//            Type commonType = null;
             for (int i = 0; i < count; i++)
             {
-                var rv = ctx.Adapter.ToRawValue(ctx, new ArrayObjectSource(targetArray, idx), values.GetValue(i));
-                if (commonType == null)
-                    commonType = rv.GetType();
-                else if (commonType != rv.GetType())
-                    commonType = typeof(void);
-                array.Add(rv);
+                var rv = Adaptor.ToRawValue(ctx, new ArrayObjectSource<TType, TValue>(targetArray, idx, source), values[i]);
+
+//                if (commonType == null)
+//                    commonType = rv.GetType();
+//                else if (commonType != rv.GetType())
+//                    commonType = typeof(void);
+                rawValues.Add(rv);
 
                 idx[idx.Length - 1]++;
             }
 
-            if (array.Count > 0 && commonType != typeof(void))
-                return array.ToArray(commonType);
+//            if (array.Count > 0 && commonType != typeof(void))
+//                return array.ToArray(commonType);
 
-            return array.ToArray();
+            return rawValues.ToArray();
         }
 
-        public void SetValue(int[] index, object value)
+        public void SetValue(int[] index, IRawValue<TValue> value)
         {
-            targetArray.SetElement(index, ctx.Adapter.FromRawValue(ctx, value));
+            targetArray.SetElement(index, value.TargetObject);
         }
 
-        public int[] Dimensions
+        public int[] Dimensions => targetArray.GetDimensions();
+
+        IRawValue[] IRawValueArray.GetValues(int[] index, int count)
         {
-            get { return targetArray.GetDimensions(); }
+            return this.GetValues(index, count);
         }
 
-        public Array ToArray()
+        void IRawValueArray.SetValue(int[] index, IRawValue value)
         {
-            int[] dims = targetArray.GetDimensions();
-            var array = new ArrayList();
+            SetValue(index, (IRawValue<TValue>)value);
+        }
 
-            if (dims.Length != 1)
-                throw new NotSupportedException();
-
-            var idx = new int [1];
-            Type commonType = null;
-            for (int n = 0; n < dims[0]; n++)
-            {
-                idx[0] = n;
-
-                var rv = ctx.Adapter.ToRawValue(ctx, new ArrayObjectSource(targetArray, idx), targetArray.GetElement(idx));
-                if (commonType == null)
-                    commonType = rv.GetType();
-                else if (commonType != rv.GetType())
-                    commonType = typeof(void);
-                array.Add(rv);
-            }
-
-            if (array.Count > 0 && commonType != typeof(void))
-                return array.ToArray(commonType);
-
-            return array.ToArray();
+        IRawValue IRawValueArray.GetValue(int[] index)
+        {
+            return GetValue(index);
         }
     }
 
-    class RemoteRawValueString : RemoteFrameObject, IRawValueString
+    class RemoteRawValueString<TType, TValue> : RemoteRawValueBase<TType, TValue>, IRawValueString
+        where TType : class
+        where TValue : class
     {
-        readonly IStringAdaptor targetString;
-        readonly object targetObject;
+        private readonly IStringAdaptor targetString;
 
-        public RemoteRawValueString(IStringAdaptor targetString, object targetObject)
+        public RemoteRawValueString(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext context,
+            IStringAdaptor targetString,
+            TValue targetObject)
+            : base(adaptor, context, targetObject)
         {
             this.targetString = targetString;
-            this.targetObject = targetObject;
-            Connect();
-        }
-
-        public object TargetObject
-        {
-            get { return targetObject; }
         }
 
         public int Length
         {
-            get { return targetString.Length; }
+            get { return this.targetString.Length; }
         }
 
         public string Value
         {
-            get { return targetString.Value; }
+            get { return this.targetString.Value; }
         }
 
         public string Substring(int index, int length)
         {
-            return targetString.Substring(index, length);
+            return this.targetString.Substring(index, length);
+        }
+    }
+
+    internal class RemoteRawValuePrimitive<TValue> : RemoteFrameObject, IRawValue<TValue>
+    {
+        public RemoteRawValuePrimitive(ValueType value, TValue targetObject)
+        {
+            if (!value.GetType().IsPrimitive)
+                throw new ArgumentException();
+            this.Value = value;
+            this.TargetObject = targetObject;
+        }
+
+        public ValueType Value { get; private set; }
+
+        public TValue TargetObject { get; private set; }
+
+        public bool IsNull
+        {
+            get { return false; }
+        }
+    }
+
+    internal class RemoteRawValueObject<TType, TValue> : RemoteRawValueBase<TType, TValue>
+        where TType : class
+        where TValue : class
+    {
+        private readonly IDebuggerHierarchicalObject source;
+        private readonly TValue targetObject;
+
+        public RemoteRawValueObject(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext gctx,
+            IDebuggerHierarchicalObject source,
+            TValue targetObject)
+            : base(adaptor, gctx.WithModifiedOptions(options =>
+            {
+                options.AllowTargetInvoke = true;
+                options.AllowMethodEvaluation = true;
+            }), targetObject)
+        {
+            this.targetObject = targetObject;
+            this.source = source;
+        }
+
+        public IRawValue<TValue> CallMethod(
+            string name,
+            IRawValue<TValue>[] parameters,
+            EvaluationOptions options)
+        {
+            IRawValue<TValue>[] outArgs;
+            return this.CallMethod(name, parameters, false, out outArgs, options);
+        }
+
+        public IRawValue<TValue> CallMethod(
+            string name,
+            IRawValue<TValue>[] parameters,
+            out IRawValue<TValue>[] outArgs,
+            EvaluationOptions options)
+        {
+            return this.CallMethod(name, parameters, true, out outArgs, options);
+        }
+
+        private IRawValue<TValue> CallMethod(
+            string name,
+            IRawValue<TValue>[] parameters,
+            bool enableOutArgs,
+            out IRawValue<TValue>[] outArgs,
+            EvaluationOptions options)
+        {
+            EvaluationContext ctx = Context.WithOptions(options);
+            TValue[] objArray = new TValue[parameters.Length];
+            TType[] typeArray = new TType[parameters.Length];
+            for (int index = 0; index < objArray.Length; ++index)
+            {
+                objArray[index] = parameters[index].TargetObject;
+                typeArray[index] = Adaptor.GetValueType(ctx, objArray[index]);
+            }
+
+            InvocationResult<TValue> invocationResult = Adaptor.Invocator.InvokeInstanceMethod(ctx, this.targetObject, name, objArray);
+            if (enableOutArgs)
+            {
+                outArgs = new IRawValue<TValue>[invocationResult.OutArgs.Length];
+                for (int index = 0; index < outArgs.Length; ++index)
+                    outArgs[index] = Adaptor.ToRawValue(ctx, this.source, invocationResult.OutArgs[index]);
+            }
+            else
+                outArgs = (IRawValue<TValue>[])null;
+
+            return Adaptor.ToRawValue(ctx, this.source, invocationResult.Result);
+        }
+
+        public IRawValue<TValue> GetMemberValue(string name, EvaluationOptions options)
+        {
+            EvaluationContext ctx = this.Context.WithOptions(options);
+            TType valueType = Adaptor.GetValueType(ctx, targetObject);
+            ValueReference<TType, TValue> member = Adaptor.GetMember(ctx, source, valueType, targetObject, name);
+            if (member == null)
+                throw new EvaluatorException("Member '{0}' not found", name);
+            return Adaptor.ToRawValue(ctx, source, member.Value);
+        }
+
+        public void SetMemberValue(string name, IRawValue<TValue> value, EvaluationOptions options)
+        {
+            EvaluationContext ctx = Context.WithOptions(options);
+            TType valueType = Adaptor.GetValueType(ctx, targetObject);
+            ValueReference<TType, TValue> member = Adaptor.GetMember(ctx, source, valueType, targetObject, name);
+            if (member == null)
+                throw new EvaluatorException("Member '{0}' not found", name);
+            member.Value = member.Value;
+        }
+
+        IRawValue CallMethod(
+            string name,
+            IRawValue[] parameters,
+            EvaluationOptions options)
+        {
+            return CallMethod(name, parameters.Cast<IRawValue<TValue>>().ToArray(), options);
+        }
+
+        IRawValue CallMethod(
+            string name,
+            IRawValue[] parameters,
+            out IRawValue[] outArgs,
+            EvaluationOptions options)
+        {
+            IRawValue<TValue>[] outArgs1;
+            IRawValue<TValue> rawValue = this.CallMethod(name, parameters.Cast<IRawValue<TValue>>().ToArray<IRawValue<TValue>>(), out outArgs1, options);
+            outArgs = (IRawValue[])outArgs1;
+            return (IRawValue)rawValue;
+        }
+
+        void SetMemberValue(
+            string name,
+            IRawValue value,
+            EvaluationOptions options)
+        {
+            this.SetMemberValue(name, (IRawValue<TValue>)value, options);
         }
     }
 }

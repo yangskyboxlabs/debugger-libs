@@ -32,11 +32,11 @@ namespace Mono.Debugging.Soft
     public class FieldReferenceBatch
     {
         readonly object locker = new object();
-        readonly object obj;
+        readonly Value obj;
         List<FieldInfoMirror> fields = new List<FieldInfoMirror>();
-        object[] results;
+        Value[] results;
 
-        public FieldReferenceBatch(object obj)
+        public FieldReferenceBatch(Value obj)
         {
             this.obj = obj;
         }
@@ -49,7 +49,7 @@ namespace Mono.Debugging.Soft
             }
         }
 
-        public object GetValue(FieldInfoMirror field)
+        public Value GetValue(FieldInfoMirror field)
         {
             lock (locker)
             {

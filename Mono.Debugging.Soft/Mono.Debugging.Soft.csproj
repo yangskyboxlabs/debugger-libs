@@ -56,11 +56,17 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ArrayAdaptor.cs" />
+      <Compile Include="Breakpoints\BreakpointsManager.cs"/>
+      <Compile Include="Breakpoints\SoftDebuggerBindingCatchRequest.cs"/>
+      <Compile Include="Breakpoints\SoftDebuggerBindingRequestBase.cs"/>
     <Compile Include="FieldValueReference.cs" />
     <Compile Include="InstructionBreakpoint.cs" />
       <Compile Include="PortablePdbData.cs"/>
     <Compile Include="PropertyValueReference.cs" />
+      <Compile Include="RuntimeInvocation\SoftResolutionResultExtensions.cs"/>
+      <Compile Include="RuntimeInvocation\SoftRuntimeInvocator.cs"/>
     <Compile Include="SoftDebuggerSession.cs" />
+      <Compile Include="SoftSpecialSymbolHelper.cs"/>
     <Compile Include="VariableValueReference.cs" />
     <Compile Include="SoftEvaluationContext.cs" />
     <Compile Include="SoftDebuggerAdaptor.cs" />

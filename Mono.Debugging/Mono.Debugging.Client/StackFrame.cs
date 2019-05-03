@@ -21,7 +21,7 @@ namespace Mono.Debugging.Client
         string fullTypeName;
 
         [NonSerialized]
-        DebuggerSession session;
+        IDebuggerSession session;
 
         public StackFrame(long address, string addressSpace, SourceLocation location, string language, bool isExternalCode, bool hasDebugInfo, bool isDebuggerHidden, string fullModuleName, string fullTypeName)
         {
@@ -53,12 +53,12 @@ namespace Mono.Debugging.Client
         public StackFrame(long address, SourceLocation location, string language)
             : this(address, "", location, language, string.IsNullOrEmpty(location.FileName), true, "", "") { }
 
-        internal void Attach(DebuggerSession debugSession)
+        internal void Attach(IDebuggerSession debugSession)
         {
             session = debugSession;
         }
 
-        public DebuggerSession DebuggerSession
+        public IDebuggerSession DebuggerSession
         {
             get { return session; }
         }
@@ -234,9 +234,10 @@ namespace Mono.Debugging.Client
             if (!hasDebugInfo)
                 return new ObjectValue [0];
 
-            var evaluator = session.FindExpressionEvaluator(this);
+            //var evaluator = session.FindExpressionEvaluator(this);
 
-            return evaluator != null ? evaluator.GetLocals(this) : GetAllLocals(session.EvaluationOptions);
+            //return evaluator != null ? evaluator.GetLocals(this) : GetAllLocals(session.EvaluationOptions);
+            return GetAllLocals(session.EvaluationOptions);
         }
 
         public ObjectValue[] GetAllLocals(EvaluationOptions options)
@@ -280,11 +281,6 @@ namespace Mono.Debugging.Client
             return value;
         }
 
-        public string ResolveExpression(string exp)
-        {
-            return session.ResolveExpression(exp, location);
-        }
-
         public ObjectValue[] GetExpressionValues(string[] expressions, bool evaluateMethods)
         {
             var options = session.EvaluationOptions.Clone();
@@ -298,21 +294,12 @@ namespace Mono.Debugging.Client
             {
                 var vals = new ObjectValue [expressions.Length];
                 for (int n = 0; n < expressions.Length; n++)
-                    vals[n] = ObjectValue.CreateUnknown(expressions[n]);
+                    vals[n] = ObjectValue.CreateUnknown(expressions[n], "The frame does not support evaluation");
 
                 return vals;
             }
 
-            if (options.UseExternalTypeResolver)
-            {
-                var resolved = new string [expressions.Length];
-                for (int n = 0; n < expressions.Length; n++)
-                    resolved[n] = ResolveExpression(expressions[n]);
-
-                expressions = resolved;
-            }
-
-            var values = sourceBacktrace.GetExpressionValues(index, expressions, options);
+            var values = sourceBacktrace.GetExpressionValues(index, expressions, options, location);
             ObjectValue.ConnectCallbacks(this, values);
             return values;
         }
@@ -327,33 +314,11 @@ namespace Mono.Debugging.Client
         public ObjectValue GetExpressionValue(string expression, EvaluationOptions options)
         {
             if (!hasDebugInfo)
-                return ObjectValue.CreateUnknown(expression);
+                return ObjectValue.CreateUnknown(expression, "The frame does not support evaluation");
 
-            if (options.UseExternalTypeResolver)
-                expression = ResolveExpression(expression);
-
-            var values = sourceBacktrace.GetExpressionValues(index, new[] { expression }, options);
+            var values = sourceBacktrace.GetExpressionValues(index, new[] { expression }, options, location);
             ObjectValue.ConnectCallbacks(this, values);
             return values[0];
-        }
-
-        /// <summary>
-        /// Returns True if the expression is valid and can be evaluated for this frame.
-        /// </summary>
-        public bool ValidateExpression(string expression)
-        {
-            return ValidateExpression(expression, session.EvaluationOptions);
-        }
-
-        /// <summary>
-        /// Returns True if the expression is valid and can be evaluated for this frame.
-        /// </summary>
-        public ValidationResult ValidateExpression(string expression, EvaluationOptions options)
-        {
-            if (options.UseExternalTypeResolver)
-                expression = ResolveExpression(expression);
-
-            return sourceBacktrace.ValidateExpression(index, expression, options);
         }
 
         public CompletionData GetExpressionCompletionData(string exp)

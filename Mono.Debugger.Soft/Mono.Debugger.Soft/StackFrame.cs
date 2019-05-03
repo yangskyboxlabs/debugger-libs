@@ -29,10 +29,7 @@ namespace Mono.Debugger.Soft
             this.flags = flags;
         }
 
-        public ThreadMirror Thread
-        {
-            get { return thread; }
-        }
+        public ThreadMirror Thread => thread;
 
         public AppDomainMirror Domain
         {
@@ -146,7 +143,9 @@ namespace Mono.Debugger.Soft
 
             // FIXME: Liveness
             // FIXME: Allow returning the frame return value if possible
-            return vm.DecodeValue(vm.conn.StackFrame_GetValues(thread.Id, Id, new int[] { (-param.Position) - 1 })[0]);
+            return vm.DecodeValue(
+                vm.conn.StackFrame_GetValues(thread.Id, Id, new int[] { (-param.Position) - 1 })[0],
+                Domain);
         }
 
         public Value GetValue(LocalVariable var)
@@ -159,7 +158,9 @@ namespace Mono.Debugger.Soft
             // FIXME: Liveness
             // FIXME: Check for return value
             // FIXME: Allow returning the frame return value if possible
-            return vm.DecodeValue(vm.conn.StackFrame_GetValues(thread.Id, Id, new int[] { var.GetValueIndex })[0]);
+            return vm.DecodeValue(
+                vm.conn.StackFrame_GetValues(thread.Id, Id, new int[] { var.GetValueIndex })[0],
+                Domain);
         }
 
         public Value[] GetValues(LocalVariable[] vars)
@@ -177,7 +178,7 @@ namespace Mono.Debugger.Soft
             int[] pos = new int [vars.Length];
             for (int i = 0; i < vars.Length; ++i)
                 pos[i] = vars[i].GetValueIndex;
-            return vm.DecodeValues(vm.conn.StackFrame_GetValues(thread.Id, Id, pos));
+            return vm.DecodeValues(vm.conn.StackFrame_GetValues(thread.Id, Id, pos), Domain);
         }
 
         public Value GetArgument(int pos)
@@ -187,7 +188,7 @@ namespace Mono.Debugger.Soft
 
         public Value GetThis()
         {
-            return vm.DecodeValue(vm.conn.StackFrame_GetThis(thread.Id, Id));
+            return vm.DecodeValue(vm.conn.StackFrame_GetThis(thread.Id, Id), Domain);
         }
 
         // Since protocol version 2.44

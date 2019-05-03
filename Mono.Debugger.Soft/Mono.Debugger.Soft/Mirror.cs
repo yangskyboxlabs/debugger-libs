@@ -15,15 +15,9 @@ namespace Mono.Debugger.Soft
 
         internal Mirror() { }
 
-        public VirtualMachine VirtualMachine
-        {
-            get { return vm; }
-        }
+        public VirtualMachine VirtualMachine => vm;
 
-        internal long Id
-        {
-            get { return id; }
-        }
+        public long Id => id;
 
         protected void SetVirtualMachine(VirtualMachine vm)
         {

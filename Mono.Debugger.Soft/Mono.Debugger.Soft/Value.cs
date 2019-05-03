@@ -8,5 +8,7 @@ namespace Mono.Debugger.Soft
 
         internal Value(VirtualMachine vm, long id)
             : base(vm, id) { }
+
+        public abstract TypeMirror Type { get; }
     }
 }

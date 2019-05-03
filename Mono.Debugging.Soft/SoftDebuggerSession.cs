@@ -43,11 +43,13 @@ using Mono.Cecil.Cil;
 using Mono.CompilerServices.SymbolWriter;
 using Mono.Debugging.Client;
 using Mono.Debugging.Evaluation;
+using Mono.Debugging.Mono.Debugging.Utils;
+using Mono.Debugging.Soft.Breakpoints;
 using MDB = Mono.Debugger.Soft;
 
 namespace Mono.Debugging.Soft
 {
-    public class SoftDebuggerSession : DebuggerSession
+    public class SoftDebuggerSession : DebuggerSession<MDB.TypeMirror, MDB.Value>
     {
         class SourceFileDebugInfo
         {
@@ -124,6 +126,11 @@ namespace Mono.Debugging.Soft
         protected virtual SoftDebuggerAdaptor CreateSoftDebuggerAdaptor()
         {
             return new SoftDebuggerAdaptor();
+        }
+
+        public SoftDebuggerBreakpointsManager BreakpointsManager
+        {
+            get { return (SoftDebuggerBreakpointsManager)base.BreakpointsManager; }
         }
 
         public Version ProtocolVersion
@@ -837,36 +844,31 @@ namespace Mono.Debugging.Soft
             Step(MDB.StepDepth.Out, MDB.StepSize.Line);
         }
 
-        protected override ProcessInfo[] OnGetProcesses()
+        protected override ProcessInfo OnGetProcessInfo()
         {
-            if (procs == null)
-            {
-                if (vm == null) //process didn't start yet
-                    return new ProcessInfo [0];
-                if (vm.TargetProcess == null)
-                {
-                    procs = new[] { new ProcessInfo(0, remoteProcessName ?? "mono") };
-                }
-                else
-                {
-                    try
-                    {
-                        procs = new[] { new ProcessInfo(vm.TargetProcess.Id, remoteProcessName ?? vm.TargetProcess.ProcessName) };
-                    }
-                    catch (Exception ex)
-                    {
-                        if (!loggedSymlinkedRuntimesBug)
-                        {
-                            loggedSymlinkedRuntimesBug = true;
-                            DebuggerLoggingService.LogError("Error getting debugger process info. Known Mono bug with symlinked runtimes.", ex);
-                        }
+            if (vm == null) //process didn't start yet
+                throw new InvalidOperationException("VM hasn't been started yet.");
 
-                        procs = new[] { new ProcessInfo(0, "mono") };
-                    }
-                }
+            if (vm.TargetProcess == null)
+            {
+                return new ProcessInfo(0, remoteProcessName ?? "mono");
             }
 
-            return new[] { new ProcessInfo(procs[0].Id, procs[0].Name) };
+            try
+            {
+                return new ProcessInfo(vm.TargetProcess.Id, remoteProcessName ?? vm.TargetProcess.ProcessName);
+            }
+            catch (Exception ex)
+            {
+                if (loggedSymlinkedRuntimesBug)
+                {
+                    return new ProcessInfo(0, "mono");
+                }
+
+                loggedSymlinkedRuntimesBug = true;
+                DebuggerLoggingService.LogError("Error getting debugger process info. Known Mono bug with symlinked runtimes.", ex);
+                return new ProcessInfo(procs[0].Id, procs[0].Name);
+            }
         }
 
         internal PortablePdbData GetPdbData(MDB.AssemblyMirror asm)
@@ -885,7 +887,7 @@ namespace Mono.Debugging.Soft
             return GetPdbData(method.DeclaringType.Assembly);
         }
 
-        protected override Backtrace OnGetThreadBacktrace(long processId, long threadId)
+        protected override Backtrace OnGetThreadBacktrace(long threadId)
         {
             return GetThreadBacktrace(GetThread(threadId));
         }
@@ -934,7 +936,7 @@ namespace Mono.Debugging.Soft
             MDB.ThreadMirror.FetchFrames(mirrorThreads);
         }
 
-        protected override ThreadInfo[] OnGetThreads(long processId)
+        protected override ThreadInfo[] OnGetThreads()
         {
             if (current_threads == null)
             {
@@ -945,7 +947,7 @@ namespace Mono.Debugging.Soft
                 {
                     var thread = mirrors[i];
 
-                    threads[i] = new ThreadInfo(processId, GetId(thread), GetThreadName(thread), null);
+                    threads[i] = new ThreadInfo(GetId(thread), GetThreadName(thread), null, this);
                 }
 
                 current_threads = threads;
@@ -1925,7 +1927,7 @@ namespace Mono.Debugging.Soft
             if (IsUserAssembly(type.Assembly))
                 return false;
 
-            if (!SoftDebuggerAdaptor.IsGeneratedType(type))
+            if (!Adaptor.SpecialSymbolHelper.IsGeneratedType(type))
                 return false;
 
             foreach (var iface in type.GetInterfaces())
@@ -2468,7 +2470,16 @@ namespace Mono.Debugging.Soft
             }
         }
 
-        void RemoveQueuedBreakEvents(Dictionary<MDB.EventRequest, MDB.AssemblyMirror> requests)
+        public void RemoveQueuedBreakEvents(IEnumerable<MDB.EventRequest> requests)
+        {
+            int num;
+            lock (queuedEventSets)
+                num = queuedEventSets.RemoveAll((Predicate<List<MDB.Event>>)(evtList => evtList.Count == evtList.RemoveAll(evt => requests.Contains(evt.Request))));
+            for (int index = 0; index < num; ++index)
+                vm.Resume();
+        }
+
+        public void RemoveQueuedBreakEvents(Dictionary<MDB.EventRequest, MDB.AssemblyMirror> requests)
         {
             int resume = 0;
 
@@ -2571,55 +2582,88 @@ namespace Mono.Debugging.Soft
             });
         }
 
-        bool HandleBreakpoint(MDB.ThreadMirror thread, MDB.EventRequest er)
+        bool HandleBreakpoint(
+            MDB.ThreadMirror thread,
+            MDB.EventRequest er,
+            MDB.TypeMirror exceptionType,
+            bool inUserCode = true)
         {
-            BreakInfo binfo;
-            if (!breakpoints.TryGetValue(er, out binfo))
-                return false;
-
-            var bp = binfo.BreakEvent;
-            if (bp == null)
-                return false;
-
-            binfo.IncrementHitCount();
-            if (!binfo.HitCountReached)
-                return true;
-
-            if (!string.IsNullOrEmpty(bp.ConditionExpression))
+            BreakEvent bp;
+            if (exceptionType == null || !(er is MDB.ExceptionEventRequest))
             {
-                string res = EvaluateExpression(thread, bp.ConditionExpression, bp);
-                if (bp.BreakIfConditionChanges)
+                var breakEventInfo = BreakpointsManager.GetBreakEventInfo(er);
+                bp = breakEventInfo.BreakEvent;
+                if (bp == null)
                 {
-                    if (res == binfo.LastConditionValue)
-                        return true;
-                    binfo.LastConditionValue = res;
-                }
-                else
-                {
-                    if (res == null || res.ToLowerInvariant() != "true")
-                        return true;
+                    return false;
                 }
             }
-
-            if ((bp.HitAction & HitAction.CustomAction) != HitAction.None)
+            else
             {
-                // If custom action returns true, execution must continue
-                return binfo.RunCustomBreakpointAction(bp.CustomActionId);
+                MDB.TypeMirror typeMirror = ((MDB.ExceptionEventRequest)er).ExceptionType;
+                foreach (Catchpoint catchpoint in BreakpointsManager.GetCatchpoints())
+                {
+                    BreakEventInfo breakEventInfo = BreakpointsManager.GetBreakEventInfo(catchpoint);
+                    if (breakEventInfo != null)
+                    {
+                        MDB.TypeMirror c = Enumerable.OfType<SoftDebuggerBindingCatchpointRequest>(breakEventInfo.BindingBreakEvents).Select<SoftDebuggerBindingCatchpointRequest, MDB.TypeMirror>((Func<SoftDebuggerBindingCatchpointRequest, MDB.TypeMirror>)(x => x.Type)).FirstOrDefault<MDB.TypeMirror>();
+                        if (c != null && c.IsAssignableFrom(exceptionType) && typeMirror.IsAssignableFrom(c))
+                        {
+                            typeMirror = c;
+                            breakEventInfo1 = breakEventInfo;
+                            bp = (BreakEvent)catchpoint;
+                        }
+                    }
+                }
             }
 
-            if ((bp.HitAction & HitAction.PrintTrace) != HitAction.None)
-            {
-                OnTargetDebug(0, "", "Breakpoint reached: " + binfo.FileName + ":" + binfo.Location.LineNumber + Environment.NewLine);
-            }
-
-            if ((bp.HitAction & HitAction.PrintExpression) != HitAction.None)
-            {
-                string exp = EvaluateTrace(thread, bp.TraceExpression);
-                binfo.UpdateLastTraceValue(exp);
-            }
-
-            // Continue execution if we don't have break action.
-            return (bp.HitAction & HitAction.Break) == HitAction.None;
+//            BreakInfo binfo;
+//            if (!breakpoints.TryGetValue(er, out binfo))
+//                return false;
+//
+//            var bp = binfo.BreakEvent;
+//            if (bp == null)
+//                return false;
+//
+//            binfo.IncrementHitCount();
+//            if (!binfo.HitCountReached)
+//                return true;
+//
+//            if (!string.IsNullOrEmpty(bp.ConditionExpression))
+//            {
+//                string res = EvaluateExpression(thread, bp.ConditionExpression, bp);
+//                if (bp.BreakIfConditionChanges)
+//                {
+//                    if (res == binfo.LastConditionValue)
+//                        return true;
+//                    binfo.LastConditionValue = res;
+//                }
+//                else
+//                {
+//                    if (res == null || res.ToLowerInvariant() != "true")
+//                        return true;
+//                }
+//            }
+//
+//            if ((bp.HitAction & HitAction.CustomAction) != HitAction.None)
+//            {
+//                // If custom action returns true, execution must continue
+//                return binfo.RunCustomBreakpointAction(bp.CustomActionId);
+//            }
+//
+//            if ((bp.HitAction & HitAction.PrintTrace) != HitAction.None)
+//            {
+//                OnTargetDebug(0, "", "Breakpoint reached: " + binfo.FileName + ":" + binfo.Location.LineNumber + Environment.NewLine);
+//            }
+//
+//            if ((bp.HitAction & HitAction.PrintExpression) != HitAction.None)
+//            {
+//                string exp = EvaluateTrace(thread, bp.TraceExpression);
+//                binfo.UpdateLastTraceValue(exp);
+//            }
+//
+//            // Continue execution if we don't have break action.
+//            return (bp.HitAction & HitAction.Break) == HitAction.None;
         }
 
         string EvaluateTrace(MDB.ThreadMirror thread, string exp)
@@ -2674,7 +2718,7 @@ namespace Mono.Debugging.Soft
             return location;
         }
 
-        static bool IsBoolean(ValueReference vr)
+        static bool IsBoolean(ValueReference<TType, TValue> vr)
         {
             if (vr.Type is Type && ((Type)vr.Type) == typeof(bool))
                 return true;
@@ -2685,7 +2729,7 @@ namespace Mono.Debugging.Soft
             return false;
         }
 
-        string EvaluateExpression(MDB.ThreadMirror thread, string expression, BreakEvent bp)
+        string EvaluateExpression(MDB.ThreadMirror thread, EvaluationExpression evaluationExpression, BreakEvent bp)
         {
             try
             {
@@ -2697,43 +2741,46 @@ namespace Mono.Debugging.Soft
                 ops.AllowTargetInvoke = true;
                 ops.EllipsizedLength = 1000;
 
-                var ctx = new SoftEvaluationContext(this, frames[0], ops);
+                string expression = evaluationExpression.Expression;
+                SourceLocation sourceLocation = GetSourceLocation(frames[0]);
+                var ctx = new SoftEvaluationContext(this, frames[0], ops).WithSourceLocation(sourceLocation);
+                return Evaluators.GetEvaluator(ctx).Evaluator.Evaluate(ctx, expression).CreateObjectValue(false).Value;
 
-                if (bp != null)
-                {
-                    // validate conditional breakpoint expressions so that we can provide error reporting to the user
-                    var vr = ctx.Evaluator.ValidateExpression(ctx, expression);
-                    if (!vr.IsValid)
-                    {
-                        string message = string.Format("Invalid expression in conditional breakpoint. {0}", vr.Message);
-                        string location = FormatSourceLocation(bp);
-
-                        if (!string.IsNullOrEmpty(location))
-                            message = location + ": " + message;
-
-                        OnDebuggerOutput(true, message);
-                        return string.Empty;
-                    }
-
-                    // resolve types...
-                    if (ctx.SourceCodeAvailable)
-                        expression = ctx.Evaluator.Resolve(this, GetSourceLocation(frames[0]), expression);
-                }
-
-                ValueReference val = ctx.Evaluator.Evaluate(ctx, expression);
-                if (bp != null && !bp.BreakIfConditionChanges && !IsBoolean(val))
-                {
-                    string message = string.Format("Expression in conditional breakpoint did not evaluate to a boolean value: {0}", bp.ConditionExpression);
-                    string location = FormatSourceLocation(bp);
-
-                    if (!string.IsNullOrEmpty(location))
-                        message = location + ": " + message;
-
-                    OnDebuggerOutput(true, message);
-                    return string.Empty;
-                }
-
-                return val.CreateObjectValue(false).Value;
+//                if (bp != null)
+//                {
+//                    // validate conditional breakpoint expressions so that we can provide error reporting to the user
+//                    var vr = Adaptor.Evaluator.ValidateExpression(ctx, expression.Expression);
+//                    if (!vr.IsValid)
+//                    {
+//                        string message = string.Format("Invalid expression in conditional breakpoint. {0}", vr.Message);
+//                        string location = FormatSourceLocation(bp);
+//
+//                        if (!string.IsNullOrEmpty(location))
+//                            message = location + ": " + message;
+//
+//                        OnDebuggerOutput(true, message);
+//                        return string.Empty;
+//                    }
+//
+//                    // resolve types...
+//                    if (ctx.SourceCodeAvailable)
+//                        expression = ctx.Evaluator.Resolve(this, sourceLocation, expression);
+//                }
+//
+//                ValueReference<TType, TValue> val = ctx.Evaluator.Evaluate(ctx, expression);
+//                if (bp != null && !bp.BreakIfConditionChanges && !IsBoolean(val))
+//                {
+//                    string message = string.Format("Expression in conditional breakpoint did not evaluate to a boolean value: {0}", bp.ConditionExpression);
+//                    string location = FormatSourceLocation(bp);
+//
+//                    if (!string.IsNullOrEmpty(location))
+//                        message = location + ": " + message;
+//
+//                    OnDebuggerOutput(true, message);
+//                    return string.Empty;
+//                }
+//
+//                return val.CreateObjectValue(false).Value;
             }
             catch (EvaluatorException ex)
             {
@@ -2741,7 +2788,7 @@ namespace Mono.Debugging.Soft
 
                 if (bp != null)
                 {
-                    message = string.Format("Failed to evaluate expression in conditional breakpoint. {0}", ex.Message);
+                    message = $"Failed to evaluate expression in conditional breakpoint. {ex.Message}";
                     string location = FormatSourceLocation(bp);
 
                     if (!string.IsNullOrEmpty(location))
@@ -3702,6 +3749,7 @@ namespace Mono.Debugging.Soft
             //emit a stop event at the current position of the most recent thread
             //we use "getprocesses" instead of "ongetprocesses" because it attaches the process to the session
             //using private Mono.Debugging API, so our thread/backtrace calls will cache stuff that will get used later
+            var processInfo = GetProcessInfo();
             var process = GetProcesses()[0];
             EnsureRecentThreadIsValid(process);
             current_thread = recent_thread;
@@ -3784,7 +3832,7 @@ namespace Mono.Debugging.Soft
             return false;
         }
 
-        public bool IsExternalCode(Mono.Debugger.Soft.StackFrame frame)
+        public bool IsExternalCode(MDB.StackFrame frame)
         {
             return frame.Method == null || string.IsNullOrEmpty(frame.FileName)
                 || (assemblyFilters != null && !assemblyFilters.Contains(frame.Method.DeclaringType.Assembly));
@@ -3846,7 +3894,7 @@ namespace Mono.Debugging.Soft
             return lines.ToArray();
         }
 
-        public AssemblyLine[] Disassemble(Mono.Debugger.Soft.StackFrame frame)
+        public AssemblyLine[] Disassemble(MDB.StackFrame frame)
         {
             var body = frame.Method.GetMethodBody();
             var instructions = body.Instructions;
@@ -3855,7 +3903,7 @@ namespace Mono.Debugging.Soft
             foreach (var instruction in instructions)
             {
                 var location = frame.Method.LocationAtILOffset(instruction.Offset);
-                int lineNumber = location != null ? location.LineNumber : -1;
+                int lineNumber = location?.LineNumber ?? -1;
                 var code = Disassemble(instruction);
 
                 lines.Add(new AssemblyLine(instruction.Offset, frame.Method.FullName, code, lineNumber));
@@ -3864,7 +3912,7 @@ namespace Mono.Debugging.Soft
             return lines.ToArray();
         }
 
-        public AssemblyLine[] Disassemble(Mono.Debugger.Soft.StackFrame frame, int firstLine, int count)
+        public AssemblyLine[] Disassemble(MDB.StackFrame frame, int firstLine, int count)
         {
             var body = frame.Method.GetMethodBody();
             var instructions = body.Instructions;

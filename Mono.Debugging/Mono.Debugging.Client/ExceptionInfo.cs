@@ -170,7 +170,7 @@ namespace Mono.Debugging.Client
                 if (frames != null)
                     return frames;
 
-                var stackTrace = exception.GetChild("StackTrace");
+                var stackTrace = exception.GetChild(nameof(StackTrace));
                 if (stackTrace == null || stackTrace.IsNull)
                     return frames = new ExceptionStackFrame [0];
 

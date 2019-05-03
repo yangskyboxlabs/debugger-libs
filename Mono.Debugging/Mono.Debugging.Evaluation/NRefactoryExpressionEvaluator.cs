@@ -30,14 +30,26 @@ using System.Collections.Generic;
 using System.Linq;
 using ICSharpCode.NRefactory.CSharp;
 using Mono.Debugging.Client;
+using Mono.Debugging.Evaluation.TypeResolution;
 
 namespace Mono.Debugging.Evaluation
 {
-    public class NRefactoryExpressionEvaluator : ExpressionEvaluator
+    public class NRefactoryExpressionEvaluator<TType, TValue> : ExpressionEvaluator<TType, TValue>
+        where TType : class
+        where TValue : class
     {
-        readonly Dictionary<string, ValueReference> userVariables = new Dictionary<string, ValueReference>();
+        readonly Dictionary<string, ValueReference<TType, TValue>> userVariables = new Dictionary<string, ValueReference<TType, TValue>>();
+        readonly ITypeResolver myTypeResolver;
 
-        public override ValueReference Evaluate(EvaluationContext ctx, string expression, object expectedType)
+        public NRefactoryExpressionEvaluator(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            ITypeResolver typeResolver)
+            : base(adaptor)
+        {
+            myTypeResolver = typeResolver;
+        }
+
+        public override ValueReference<TType, TValue> Evaluate(EvaluationContext ctx, string expression, TType expectedType)
         {
             expression = expression.TrimStart();
 
@@ -68,7 +80,7 @@ namespace Mono.Debugging.Evaluation
                 }
 
                 if (!string.IsNullOrEmpty(variable))
-                    userVariables[variable] = new UserVariableReference(ctx, variable);
+                    userVariables[variable] = new UserVariableReference<TType, TValue>(Adaptor, ctx, variable);
 
                 if (expression == null)
                     return null;
@@ -80,32 +92,32 @@ namespace Mono.Debugging.Evaluation
             if (expr == null)
                 throw new EvaluatorException("Could not parse expression '{0}'", expression);
 
-            var evaluator = new NRefactoryExpressionEvaluatorVisitor(ctx, expression, expectedType, userVariables);
-            return expr.AcceptVisitor<ValueReference>(evaluator);
+            var evaluator = new NRefactoryExpressionEvaluatorVisitor<TType, TValue>(ctx, expression, expectedType, userVariables);
+            return expr.AcceptVisitor(evaluator);
         }
 
-        public override string Resolve(DebuggerSession session, SourceLocation location, string exp)
-        {
-            return Resolve(session, location, exp, false);
-        }
-
-        string Resolve(DebuggerSession session, SourceLocation location, string expression, bool tryTypeOf)
+        string Resolve(
+            EvaluationContext ctx,
+            SourceLocation location,
+            string expression,
+            bool tryTypeOf = false)
         {
             expression = expression.TrimStart();
 
             if (expression.Length > 0 && expression[0] == '?')
-                return "?" + Resolve(session, location, expression.Substring(1).Trim());
+                return "?" + Resolve(ctx, location, expression.Substring(1).Trim());
 
             if (expression.Length > 3 && expression.StartsWith("var", StringComparison.Ordinal) && char.IsWhiteSpace(expression[3]))
-                return "var " + Resolve(session, location, expression.Substring(4).Trim(' ', '\t'));
+                return "var " + Resolve(ctx, location, expression.Substring(4).Trim(' ', '\t'));
 
-            expression = ReplaceExceptionTag(expression, session.Options.EvaluationOptions.CurrentExceptionTag);
+            expression = ReplaceExceptionTag(expression, ctx.Options.CurrentExceptionTag);
+            expression = ReplaceObjectIdLabel(expression, ctx.Options.UserObjectIdPrefix);
 
             Expression expr = new CSharpParser().ParseExpression(expression);
             if (expr == null)
                 return expression;
 
-            var resolver = new NRefactoryExpressionResolverVisitor(session, location, expression);
+            var resolver = new NRefactoryExpressionResolverVisitor(ctx, myTypeResolver, location, expression);
             expr.AcceptVisitor(resolver);
 
             string resolved = resolver.GetResolvedExpression();
@@ -114,7 +126,7 @@ namespace Mono.Debugging.Evaluation
                 // This is a hack to be able to parse expressions such as "List<string>". The NRefactory parser
                 // can parse a single type name, so a solution is to wrap it around a typeof(). We do it if
                 // the evaluation fails.
-                string res = Resolve(session, location, "typeof(" + expression + ")", true);
+                string res = Resolve(ctx, location, "typeof(" + expression + ")", true);
                 return res.Substring(7, res.Length - 8);
             }
 
@@ -150,6 +162,21 @@ namespace Mono.Debugging.Evaluation
         {
             // FIXME: Don't replace inside string literals
             return exp.Replace(tag, "__EXCEPTION_OBJECT__");
+        }
+
+        string ReplaceObjectIdLabel(string exp, string tag)
+        {
+            string str = exp;
+            foreach (string key in userVariables.Keys)
+            {
+                if (key.StartsWith(tag))
+                {
+                    string oldValue = "$" + key.Substring(tag.Length);
+                    str = str.Replace(oldValue, key);
+                }
+            }
+
+            return str;
         }
 
         bool IsTypeName(string name)

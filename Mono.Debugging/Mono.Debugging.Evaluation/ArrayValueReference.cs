@@ -31,22 +31,28 @@ using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-    public class ArrayValueReference : ValueReference
+    public class ArrayValueReference<TType, TValue> : ValueReference<TType, TValue>
+        where TType : class
+        where TValue : class
     {
-        readonly ICollectionAdaptor adaptor;
+        readonly ICollectionAdaptor<TType, TValue> arrayAdaptor;
         readonly int[] indices;
 
-        public ArrayValueReference(EvaluationContext ctx, object arr, int[] indices)
-            : base(ctx)
+        public ArrayValueReference(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx,
+            TValue arr,
+            int[] indices)
+            : base(adaptor, ctx)
         {
             this.indices = indices;
-            adaptor = ctx.Adapter.CreateArrayAdaptor(ctx, arr);
+            arrayAdaptor = adaptor.CreateArrayAdaptor(ctx, arr);
         }
 
-        public override object Value
+        public override TValue Value
         {
-            get { return adaptor.GetElement(indices); }
-            set { adaptor.SetElement(indices, value); }
+            get => arrayAdaptor.GetElement(indices);
+            set => arrayAdaptor.SetElement(indices, value);
         }
 
         public override string Name
@@ -69,14 +75,8 @@ namespace Mono.Debugging.Evaluation
             }
         }
 
-        public override object Type
-        {
-            get { return adaptor.ElementType; }
-        }
+        public override TType Type => arrayAdaptor.ElementType;
 
-        public override ObjectValueFlags Flags
-        {
-            get { return ObjectValueFlags.ArrayElement; }
-        }
+        public override ObjectValueFlags Flags => ObjectValueFlags.ArrayElement;
     }
 }

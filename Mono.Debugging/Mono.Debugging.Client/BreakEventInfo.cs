@@ -25,6 +25,11 @@
 // THE SOFTWARE.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using Mono.Debugging.Client.Breakpoints;
+using Util.Concurrency;
 
 namespace Mono.Debugging.Client
 {
@@ -32,9 +37,9 @@ namespace Mono.Debugging.Client
     /// This class can be used to manage and get information about a breakpoint
     /// at debug-time. It is intended to be used by DebuggerSession subclasses.
     /// </summary>
-    public class BreakEventInfo
+    public class BreakEventInfo<TModule>
     {
-        DebuggerSession session;
+        IDebuggerSession session;
         int adjustedColumn = -1;
         int adjustedLine = -1;
 
@@ -58,43 +63,55 @@ namespace Mono.Debugging.Client
         /// </summary>
         public string StatusMessage { get; private set; }
 
-        internal void AttachSession(DebuggerSession s, BreakEvent ev)
+        readonly ReaderWriterLockSlim myBindingBreakEventsLock = new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion);
+        readonly List<IBindingBreakEvent<TModule>> myBindingBreakEvents;
+
+        public IReadOnlyCollection<IBindingBreakEvent<TModule>> BindingBreakEvents
         {
-            session = s;
-            BreakEvent = ev;
-            session.NotifyBreakEventStatusChanged(BreakEvent);
-            if (adjustedLine != -1 || adjustedColumn != -1)
-                session.AdjustBreakpointLocation((Breakpoint)BreakEvent, adjustedLine, adjustedColumn);
+            get
+            {
+                using (myBindingBreakEventsLock.UsingReadLock())
+                    return myBindingBreakEvents.ToList();
+            }
         }
 
-        /// <summary>
-        /// Adjusts the location of a breakpoint
-        /// </summary>
-        /// <param name='newLine'>
-        /// New line.
-        /// </param>
-        /// <remarks>
-        /// This method can be used to temporarily change source code line of the breakpoint.
-        /// This is useful, for example, when two adjacent lines are mapped to a single
-        /// native offset. If the breakpoint is set to the first of those lines, the debugger
-        /// might end stopping in the second line, because it has the same native offset.
-        /// To avoid this confusion situation, the debugger implementation may decide to
-        /// adjust the position of the breakpoint, and move it to the second line.
-        /// This line adjustment has effect only during the debug session, and is automatically
-        /// reset when it terminates.
-        /// </remarks>
-        public void AdjustBreakpointLocation(int newLine, int newColumn)
-        {
-            if (session != null)
-            {
-                session.AdjustBreakpointLocation((Breakpoint)BreakEvent, newLine, newColumn);
-            }
-            else
-            {
-                adjustedColumn = newColumn;
-                adjustedLine = newLine;
-            }
-        }
+//        internal void AttachSession(IDebuggerSession s, BreakEvent ev)
+//        {
+//            session = s;
+//            BreakEvent = ev;
+//            session.NotifyBreakEventStatusChanged(BreakEvent);
+//            if (adjustedLine != -1 || adjustedColumn != -1)
+//                session.AdjustBreakpointLocation((Breakpoint)BreakEvent, adjustedLine, adjustedColumn);
+//        }
+
+//        /// <summary>
+//        /// Adjusts the location of a breakpoint
+//        /// </summary>
+//        /// <param name='newLine'>
+//        /// New line.
+//        /// </param>
+//        /// <remarks>
+//        /// This method can be used to temporarily change source code line of the breakpoint.
+//        /// This is useful, for example, when two adjacent lines are mapped to a single
+//        /// native offset. If the breakpoint is set to the first of those lines, the debugger
+//        /// might end stopping in the second line, because it has the same native offset.
+//        /// To avoid this confusion situation, the debugger implementation may decide to
+//        /// adjust the position of the breakpoint, and move it to the second line.
+//        /// This line adjustment has effect only during the debug session, and is automatically
+//        /// reset when it terminates.
+//        /// </remarks>
+//        public void AdjustBreakpointLocation(int newLine, int newColumn)
+//        {
+//            if (session != null)
+//            {
+//                session.AdjustBreakpointLocation((Breakpoint)BreakEvent, newLine, newColumn);
+//            }
+//            else
+//            {
+//                adjustedColumn = newColumn;
+//                adjustedLine = newLine;
+//            }
+//        }
 
         /// <summary>
         /// Increments the hit count.
@@ -133,34 +150,34 @@ namespace Mono.Debugging.Client
             }
         }
 
-        public void SetStatus(BreakEventStatus s, string statusMessage)
-        {
-            if (s != Status)
-            {
-                Status = s;
-                StatusMessage = statusMessage;
-                if (session != null)
-                    session.NotifyBreakEventStatusChanged(BreakEvent);
-            }
-        }
+//        public void SetStatus(BreakEventStatus s, string statusMessage)
+//        {
+//            if (s != Status)
+//            {
+//                Status = s;
+//                StatusMessage = statusMessage;
+//                if (session != null)
+//                    session.NotifyBreakEventStatusChanged(BreakEvent);
+//            }
+//        }
 
-        public bool RunCustomBreakpointAction(string actionId)
-        {
-            BreakEventHitHandler h = session.CustomBreakEventHitHandler;
-            return h != null && h(actionId, BreakEvent);
-        }
-
-        public void UpdateLastTraceValue(string value)
-        {
-            BreakEvent.LastTraceValue = value;
-            BreakEvent.NotifyUpdate();
-            if (value != null)
-            {
-                if (session.BreakpointTraceHandler != null)
-                    session.BreakpointTraceHandler(BreakEvent, value);
-                else
-                    session.OnTargetDebug(0, "", value + Environment.NewLine);
-            }
-        }
+//        public bool RunCustomBreakpointAction(string actionId)
+//        {
+//            BreakEventHitHandler h = session.CustomBreakEventHitHandler;
+//            return h != null && h(actionId, BreakEvent);
+//        }
+//
+//        public void UpdateLastTraceValue(string value)
+//        {
+//            BreakEvent.LastTraceValue = value;
+//            BreakEvent.NotifyUpdate();
+//            if (value != null)
+//            {
+//                if (session.BreakpointTraceHandler != null)
+//                    session.BreakpointTraceHandler(BreakEvent, value);
+//                else
+//                    session.OnTargetDebug(0, "", value + Environment.NewLine);
+//            }
+//        }
     }
 }

@@ -25,11 +25,12 @@
 // THE SOFTWARE.
 
 using System;
+using Mono.Debugging.Backend;
 
 namespace Mono.Debugging.Evaluation
 {
-    public interface IObjectSource
+    public interface IObjectSource<TValue> : IDebuggerHierarchicalObject
     {
-        object Value { get; set; }
+        TValue Value { get; set; }
     }
 }

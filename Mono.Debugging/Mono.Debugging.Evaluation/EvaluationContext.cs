@@ -26,6 +26,7 @@
 //
 
 using System;
+using System.Threading;
 using Mono.Debugging.Backend;
 using Mono.Debugging.Client;
 
@@ -33,15 +34,10 @@ namespace Mono.Debugging.Evaluation
 {
     public class EvaluationContext
     {
-        public ExpressionEvaluator Evaluator { get; set; }
-        public ObjectValueAdaptor Adapter { get; set; }
-
         public EvaluationOptions Options { get; set; }
+        public SourceLocation SourceLocation { get; internal set; }
 
-        public bool CaseSensitive
-        {
-            get { return Evaluator.CaseSensitive; }
-        }
+        public bool CaseSensitive { get; }
 
         public virtual void WriteDebuggerError(Exception ex) { }
 
@@ -53,6 +49,14 @@ namespace Mono.Debugging.Evaluation
         {
             if (!Options.AllowTargetInvoke)
                 throw new ImplicitEvaluationDisabledException();
+        }
+
+        public void AssertMethodEvaluationAllowed()
+        {
+            if (!Options.AllowMethodEvaluation)
+            {
+                throw new ImplicitEvaluationDisabledException();
+            }
         }
 
         public EvaluationContext(EvaluationOptions options)
@@ -80,34 +84,25 @@ namespace Mono.Debugging.Evaluation
         public virtual void CopyFrom(EvaluationContext ctx)
         {
             Options = ctx.Options.Clone();
-            Evaluator = ctx.Evaluator;
-            Adapter = ctx.Adapter;
         }
 
-        ExpressionValueSource expressionValueSource;
+        public virtual bool SupportIEnumerable => false;
 
-        internal ExpressionValueSource ExpressionValueSource
-        {
-            get
-            {
-                if (expressionValueSource == null)
-                    expressionValueSource = new ExpressionValueSource(this);
-                return expressionValueSource;
-            }
-        }
-
-        public virtual bool SupportIEnumerable
-        {
-            get { return false; }
-        }
+        internal CancellationToken CancellationToken { get; set; }
     }
 
-    class ExpressionValueSource : RemoteFrameObject, IObjectValueSource
+    class ExpressionValueSource<TType, TValue> : RemoteFrameObject, IObjectValueSource
+        where TType : class
+        where TValue : class
     {
         readonly EvaluationContext ctx;
+        readonly ObjectValueAdaptor<TType, TValue> adapter;
 
-        public ExpressionValueSource(EvaluationContext ctx)
+        public ExpressionValueSource(
+            ObjectValueAdaptor<TType, TValue> adapter,
+            EvaluationContext ctx)
         {
+            this.adapter = adapter;
             this.ctx = ctx;
             Connect();
         }
@@ -125,18 +120,30 @@ namespace Mono.Debugging.Evaluation
         public ObjectValue GetValue(ObjectPath path, EvaluationOptions options)
         {
             EvaluationContext c = ctx.WithOptions(options);
-            var vals = c.Adapter.GetExpressionValuesAsync(c, new string[] { path.LastName });
+            var vals = adapter.GetExpressionValuesAsync(c, new string[] { path.LastName });
             return vals[0];
         }
 
-        public object GetRawValue(ObjectPath path, EvaluationOptions options)
+        public IRawValue GetRawValue(ObjectPath path, EvaluationOptions options)
         {
             throw new NotImplementedException();
         }
 
-        public void SetRawValue(ObjectPath path, object value, EvaluationOptions options)
+        public void SetRawValue(ObjectPath path, IRawValue value, EvaluationOptions options)
         {
             throw new NotImplementedException();
+        }
+    }
+
+    class ExpressionValueSource
+    {
+        public static ExpressionValueSource<TType, TValue> Create<TType, TValue>(
+            ObjectValueAdaptor<TType, TValue> adapter,
+            EvaluationContext context)
+            where TType : class
+            where TValue : class
+        {
+            return new ExpressionValueSource<TType, TValue>(adapter, context);
         }
     }
 }

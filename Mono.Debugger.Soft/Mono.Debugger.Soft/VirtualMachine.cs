@@ -234,15 +234,15 @@ namespace Mono.Debugger.Soft
         }
 
         // Same as the mirrorOf methods in JDI
-        public PrimitiveValue CreateValue(object value)
+        public PrimitiveValue CreateValue(object value, AppDomainMirror callingDomain)
         {
             if (value == null)
-                return new PrimitiveValue(vm, null);
+                return new PrimitiveValue(null, callingDomain);
 
             if (!value.GetType().IsPrimitive)
-                throw new ArgumentException("value must be of a primitive type instead of '" + value.GetType() + "'", "value");
+                throw new ArgumentException("value must be of a primitive type instead of '" + value.GetType() + "'", nameof(value));
 
-            return new PrimitiveValue(vm, value);
+            return new PrimitiveValue(value, callingDomain);
         }
 
         public EnumMirror CreateEnumMirror(TypeMirror type, PrimitiveValue value)
@@ -722,18 +722,18 @@ namespace Mono.Debugger.Soft
             }
         }
 
-        internal Value DecodeValue(ValueImpl v)
+        internal Value DecodeValue(ValueImpl v, AppDomainMirror callingDomain)
         {
-            return DecodeValue(v, null);
+            return DecodeValue(v, null, callingDomain);
         }
 
-        internal Value DecodeValue(ValueImpl v, Dictionary<int, Value> parent_vtypes)
+        internal Value DecodeValue(ValueImpl v, Dictionary<int, Value> parent_vtypes, AppDomainMirror callingDomain)
         {
             if (v.Value != null)
             {
                 if (Version.AtLeast(2, 46) && v.Type == ElementType.Ptr)
                     return new PointerValue(this, GetType(v.Klass), (long)v.Value);
-                return new PrimitiveValue(this, v.Value);
+                return new PrimitiveValue(v.Value, callingDomain);
             }
 
             switch (v.Type)
@@ -757,11 +757,11 @@ namespace Mono.Debugger.Soft
                     else
                         vtype = new StructMirror(this, GetType(v.Klass), (Value[])null);
                     parent_vtypes[parent_vtypes.Count] = vtype;
-                    vtype.SetFields(DecodeValues(v.Fields, parent_vtypes));
+                    vtype.SetFields(DecodeValues(v.Fields, parent_vtypes, callingDomain));
                     parent_vtypes.Remove(parent_vtypes.Count - 1);
                     return vtype;
                 case (ElementType)ValueTypeId.VALUE_TYPE_ID_NULL:
-                    return new PrimitiveValue(this, null);
+                    return new PrimitiveValue(null, callingDomain);
                 case (ElementType)ValueTypeId.VALUE_TYPE_ID_PARENT_VTYPE:
                     return parent_vtypes[v.Index];
                 default:
@@ -769,19 +769,22 @@ namespace Mono.Debugger.Soft
             }
         }
 
-        internal Value[] DecodeValues(ValueImpl[] values)
+        internal Value[] DecodeValues(ValueImpl[] values, AppDomainMirror callingDomain)
         {
             Value[] res = new Value [values.Length];
             for (int i = 0; i < values.Length; ++i)
-                res[i] = DecodeValue(values[i]);
+                res[i] = DecodeValue(values[i], callingDomain);
             return res;
         }
 
-        internal Value[] DecodeValues(ValueImpl[] values, Dictionary<int, Value> parent_vtypes)
+        internal Value[] DecodeValues(
+            ValueImpl[] values,
+            Dictionary<int, Value> parent_vtypes,
+            AppDomainMirror callingDomain)
         {
             Value[] res = new Value [values.Length];
             for (int i = 0; i < values.Length; ++i)
-                res[i] = DecodeValue(values[i], parent_vtypes);
+                res[i] = DecodeValue(values[i], parent_vtypes, callingDomain);
             return res;
         }
 

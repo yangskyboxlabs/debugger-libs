@@ -34,10 +34,18 @@ namespace Mono.Debugging.Backend
     public interface IObjectValueSource : IDebuggerBackendObject
     {
         ObjectValue[] GetChildren(ObjectPath path, int index, int count, EvaluationOptions options);
+
+        /// <summary>
+        /// Updates the value with the result of evaluation of <paramref name="value" /> expression
+        /// </summary>
+        /// <exception cref="T:Mono.Debugging.Evaluation.ValueModificationException" />
+        ///  call site should catch this exception and show it to user in pretty way (e.g. in message box)
+        ///             All other exceptions indicate error and should be logged
         EvaluationResult SetValue(ObjectPath path, string value, EvaluationOptions options);
+
         ObjectValue GetValue(ObjectPath path, EvaluationOptions options);
 
-        object GetRawValue(ObjectPath path, EvaluationOptions options);
-        void SetRawValue(ObjectPath path, object value, EvaluationOptions options);
+        IRawValue GetRawValue(ObjectPath path, EvaluationOptions options);
+        void SetRawValue(ObjectPath path, IRawValue value, EvaluationOptions options);
     }
 }

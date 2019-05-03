@@ -25,7 +25,10 @@
 // THE SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using Mono.Debugging.Backend;
+using Mono.Debugging.Evaluation;
+using Mono.Debugging.Evaluation.RuntimeInvocation;
 
 namespace Mono.Debugging.Client
 {
@@ -33,11 +36,15 @@ namespace Mono.Debugging.Client
     /// Represents an object in the process being debugged
     /// </summary>
     [Serializable]
-    public class RawValue : IRawObject
+    public class RawValue<TType, TValue> : IRawObject
+        where TType : class
+        where TValue : class
     {
-        IRawValue source;
+        readonly TValue targetObject;
         EvaluationOptions options;
-        DebuggerSession session;
+        readonly IDebuggerHierarchicalObject source;
+        EvaluationContext Context { get; set; }
+        ObjectValueAdaptor<TType, TValue> Adaptor { get; }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Mono.Debugging.Client.RawValue"/> class.
@@ -45,21 +52,16 @@ namespace Mono.Debugging.Client
         /// <param name='source'>
         /// Value source
         /// </param>
-        public RawValue(IRawValue source)
+        public RawValue(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext context,
+            IDebuggerHierarchicalObject source,
+            TValue targetObject)
         {
+            Adaptor = adaptor;
+            this.targetObject = targetObject;
             this.source = source;
-        }
-
-        void IRawObject.Connect(DebuggerSession session, EvaluationOptions options)
-        {
-            this.options = options;
-            this.session = session;
-            source = session.WrapDebuggerObject(source);
-        }
-
-        internal IRawValue Source
-        {
-            get { return this.source; }
+            Context = context;
         }
 
         /// <summary>
@@ -79,28 +81,45 @@ namespace Mono.Debugging.Client
         /// <param name='parameters'>
         /// The parameters (primitive type values, RawValue instances or RawValueArray instances)
         /// </param>
-        public object CallMethod(string methodName, params object[] parameters)
+        public IRawValue<TValue> CallMethod(
+            string methodName,
+            params IRawValue<TValue>[] parameters)
         {
-            object res = source.CallMethod(methodName, parameters, options);
-            RawValue val = res as RawValue;
-            if (val != null)
-                val.options = options;
-            IRawObject raw = res as IRawObject;
-            if (raw != null)
-                raw.Connect(session, options);
-            return res;
+            return CallMethod(methodName, parameters, false, out var outArgs);
         }
 
-        public object CallMethod(string methodName, out object[] outArgs, params object[] parameters)
+        public IRawValue<TValue> CallMethod(string methodName, out IRawValue<TValue>[] outArgs, params IRawValue<TValue>[] parameters)
         {
-            object res = source.CallMethod(methodName, parameters, out outArgs, options);
-            RawValue val = res as RawValue;
-            if (val != null)
-                val.options = options;
-            IRawObject raw = res as IRawObject;
-            if (raw != null)
-                raw.Connect(session, options);
-            return res;
+            return CallMethod(methodName, parameters, true, out outArgs);
+        }
+
+        IRawValue<TValue> CallMethod(
+            string methodName,
+            IRawValue<TValue>[] parameters,
+            bool enableOutArgs,
+            out IRawValue<TValue>[] outArgs)
+        {
+            EvaluationContext ctx = Context.WithOptions(options);
+            TValue[] objArray = new TValue[parameters.Length];
+            TType[] typeArray = new TType[parameters.Length];
+            for (int index = 0; index < objArray.Length; ++index)
+            {
+                objArray[index] = parameters[index].TargetObject;
+                typeArray[index] = Adaptor.GetValueType(ctx, objArray[index]);
+            }
+
+            InvocationResult<TValue> invocationResult = Adaptor.Invocator.InvokeInstanceMethod(ctx, targetObject, methodName, objArray);
+            if (enableOutArgs)
+            {
+                // TODO: Support this
+                throw new NotSupportedException("Does not support out args");
+            }
+            else
+            {
+                outArgs = null;
+            }
+
+            return Adaptor.ToRawValue(ctx, source, invocationResult.Result);
         }
 
         /// <summary>
@@ -112,16 +131,14 @@ namespace Mono.Debugging.Client
         /// <param name='name'>
         /// Name of the field or property
         /// </param>
-        public object GetMemberValue(string name)
+        public IRawValue<TValue> GetMemberValue(string name)
         {
-            object res = source.GetMemberValue(name, options);
-            RawValue val = res as RawValue;
-            if (val != null)
-                val.options = options;
-            IRawObject raw = res as IRawObject;
-            if (raw != null)
-                raw.Connect(session, options);
-            return res;
+            EvaluationContext ctx = Context.WithOptions(options);
+            TType valueType = Adaptor.GetValueType(ctx, targetObject);
+            ValueReference<TType, TValue> member = Adaptor.GetMember(ctx, source, valueType, targetObject, name);
+            if (member == null)
+                throw new EvaluatorException("Member '{0}' not found", (object)name);
+            return Adaptor.ToRawValue(ctx, this.source, member.Value);
         }
 
         /// <summary>
@@ -133,9 +150,14 @@ namespace Mono.Debugging.Client
         /// <param name='value'>
         /// The value (a primitive type value, a RawValue instance or a RawValueArray instance)
         /// </param>
-        public void SetMemberValue(string name, object value)
+        public void SetMemberValue(string name, IRawValue<TValue> value)
         {
-            source.SetMemberValue(name, value, options);
+            EvaluationContext ctx = Context.WithOptions(options);
+            TType valueType = Adaptor.GetValueType(ctx, targetObject);
+            ValueReference<TType, TValue> member = Adaptor.GetMember(ctx, source, valueType, targetObject, name);
+            if (member == null)
+                throw new EvaluatorException("Member '{0}' not found", (object)name);
+            member.Value = value.TargetObject;
         }
     }
 
@@ -143,12 +165,15 @@ namespace Mono.Debugging.Client
     /// Represents an array of objects in the process being debugged
     /// </summary>
     [Serializable]
-    public class RawValueArray : IRawObject
+    internal class RawValueArray<TType, TValue> : RemoteRawValueBase<TType, TValue>, IRawValueArray<TValue>, IRawObject
+        where TType : class
+        where TValue : class
     {
-        IRawValueArray source;
+        readonly ICollectionAdaptor<TType, TValue> targetArray;
+        readonly IDebuggerHierarchicalObject source;
         EvaluationOptions options;
-        DebuggerSession session;
-        int[] dimensions;
+
+        public int[] Dimensions => targetArray.GetDimensions();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Mono.Debugging.Client.RawValueArray"/> class.
@@ -156,41 +181,30 @@ namespace Mono.Debugging.Client
         /// <param name='source'>
         /// Value source.
         /// </param>
-        public RawValueArray(IRawValueArray source)
+        public RawValueArray(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext context,
+            IDebuggerHierarchicalObject source,
+            ICollectionAdaptor<TType, TValue> targetArray)
+            : base(adaptor, context, targetArray.CollectionObject)
         {
+            this.targetArray = targetArray;
             this.source = source;
         }
 
-        void IRawObject.Connect(DebuggerSession session, EvaluationOptions options)
+        public IRawValue<TValue> GetValue(int[] index)
         {
-            this.options = options;
-            this.session = session;
-            source = session.WrapDebuggerObject(source);
+            return Adaptor.ToRawValue(Context, source, targetArray.GetElement(index));
         }
 
-        internal IRawValueArray Source
+        IRawValue[] IRawValueArray.GetValues(int[] index, int count)
         {
-            get { return this.source; }
+            return GetValues(index, count);
         }
 
-        /// <summary>
-        /// Full type name of the array items
-        /// </summary>
-        public string ElementTypeName { get; set; }
-
-        /// <summary>
-        /// Gets or sets the item at the specified index.
-        /// </summary>
-        /// <param name='index'>
-        /// The index
-        /// </param>
-        /// <remarks>
-        /// The item value can be a primitive type value, a RawValue instance or a RawValueArray instance.
-        /// </remarks>
-        public object this[int index]
+        IRawValue IRawValueArray.GetValue(int[] index)
         {
-            get { return source.GetValue(new int[] { index }); }
-            set { source.SetValue(new int[] { index }, value); }
+            return GetValue(index);
         }
 
         /// <summary>
@@ -203,47 +217,34 @@ namespace Mono.Debugging.Client
         /// This method is useful for incrementally fetching an array in order to avoid
         /// long waiting periods when the array is too large for ToArray().
         /// </remarks>
-        public Array GetValues(int index, int count)
+        public IRawValue<TValue>[] GetValues(int[] index, int count)
         {
-            return source.GetValues(new int[] { index }, count);
-        }
-
-        /// <summary>
-        /// Returns an array with all items of the RawValueArray
-        /// </summary>
-        /// <remarks>
-        /// This method is useful to avoid unnecessary debugger-debuggee roundtrips
-        /// when processing all items of an array. For example, if a RawValueArray
-        /// represents an image encoded in a byte[], getting the values one by one
-        /// using the indexer is very slow. The ToArray() will return the whole byte[]
-        /// in a single call.
-        /// </remarks>
-        public Array ToArray()
-        {
-            var array = source.ToArray();
-            for (int i = 0; i < array.Length; i++)
+            TValue[] elements = targetArray.GetElements(index, count);
+            int[] indices = new int[index.Length];
+            for (int i = 0; i < index.Length; i++)
             {
-                var val = array.GetValue(i) as IRawObject;
-                if (val != null)
-                {
-                    val.Connect(session, options);
-                }
+                indices[i] = index[i];
             }
 
-            return array;
+            var rawValues = new List<IRawValue<TValue>>();
+            for (int i = 0; i < count; i++)
+            {
+                IRawValue<TValue> rawValue = Adaptor.ToRawValue(Context, new ArrayObjectSource<TType, TValue>(targetArray, indices, source), elements[i]);
+                rawValues.Add(rawValue);
+                ++indices[indices.Length - 1];
+            }
+
+            return rawValues.ToArray();
         }
 
-        /// <summary>
-        /// Gets the length of the array
-        /// </summary>
-        public int Length
+        public void SetValue(int[] index, IRawValue<TValue> value)
         {
-            get
-            {
-                if (dimensions == null)
-                    dimensions = source.Dimensions;
-                return dimensions[0];
-            }
+            targetArray.SetElement(index, value.TargetObject);
+        }
+
+        void IRawValueArray.SetValue(int[] index, IRawValue value)
+        {
+            SetValue(index, (IRawValue<TValue>)value);
         }
     }
 
@@ -264,11 +265,6 @@ namespace Mono.Debugging.Client
         public RawValueString(IRawValueString source)
         {
             this.source = source;
-        }
-
-        void IRawObject.Connect(DebuggerSession session, EvaluationOptions options)
-        {
-            source = session.WrapDebuggerObject(source);
         }
 
         internal IRawValueString Source
@@ -310,8 +306,5 @@ namespace Mono.Debugging.Client
         }
     }
 
-    interface IRawObject
-    {
-        void Connect(DebuggerSession session, EvaluationOptions options);
-    }
+    interface IRawObject { }
 }

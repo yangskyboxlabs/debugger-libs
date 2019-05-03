@@ -27,17 +27,23 @@
 
 using System;
 using System.Collections.Generic;
-using Mono.Debugging.Client;
+using Mono.Debugging.Backend;
+using DC = Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-    public class NamespaceValueReference : ValueReference
+    public class NamespaceValueReference<TType, TValue> : ValueReference<TType, TValue>
+        where TType : class
+        where TValue : class
     {
         readonly string namspace;
         readonly string name;
 
-        public NamespaceValueReference(EvaluationContext ctx, string name)
-            : base(ctx)
+        public NamespaceValueReference(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx,
+            string name)
+            : base(adaptor, ctx)
         {
             namspace = name;
 
@@ -48,18 +54,18 @@ namespace Mono.Debugging.Evaluation
                 this.name = namspace;
         }
 
-        public override object Value
+        public override TValue Value
         {
             get { throw new NotSupportedException(); }
             set { throw new NotSupportedException(); }
         }
 
-        public override object Type
+        public override TType Type
         {
             get { throw new NotSupportedException(); }
         }
 
-        public override object ObjectValue
+        public override IRawValue<TValue> ObjectValue
         {
             get { throw new NotSupportedException(); }
         }
@@ -69,27 +75,27 @@ namespace Mono.Debugging.Evaluation
             get { return name; }
         }
 
-        public override ObjectValueFlags Flags
+        public override DC.ObjectValueFlags Flags
         {
-            get { return ObjectValueFlags.Namespace; }
+            get { return DC.ObjectValueFlags.Namespace; }
         }
 
-        public override ValueReference GetChild(string name, EvaluationOptions options)
+        public override ValueReference<TType, TValue> GetChild(string name, DC.EvaluationOptions options)
         {
             string newNs = namspace + "." + name;
 
             var ctx = GetContext(options);
-            var type = ctx.Adapter.GetType(ctx, newNs);
+            var type = Adaptor.GetType(ctx, newNs);
 
             if (type != null)
-                return new TypeValueReference(ctx, type);
+                return new TypeValueReference<TType, TValue>(Adaptor, ctx, type);
 
-            return new NamespaceValueReference(ctx, newNs);
+            return new NamespaceValueReference<TType, TValue>(Adaptor, ctx, newNs);
         }
 
-        public override ObjectValue[] GetChildren(ObjectPath path, int index, int count, EvaluationOptions options)
+        public override DC.ObjectValue[] GetChildren(DC.ObjectPath path, int index, int count, DC.EvaluationOptions options)
         {
-            var children = new List<ObjectValue>();
+            var children = new List<DC.ObjectValue>();
 
             foreach (var val in GetChildReferences(options))
                 children.Add(val.CreateObjectValue(options));
@@ -97,29 +103,29 @@ namespace Mono.Debugging.Evaluation
             return children.ToArray();
         }
 
-        public override IEnumerable<ValueReference> GetChildReferences(EvaluationOptions options)
+        public override IEnumerable<ValueReference<TType, TValue>> GetChildReferences(DC.EvaluationOptions options)
         {
             // Child types
             string[] childNamespaces;
             string[] childTypes;
 
             var ctx = GetContext(options);
-            ctx.Adapter.GetNamespaceContents(ctx, namspace, out childNamespaces, out childTypes);
+            Adaptor.GetNamespaceContents(ctx, namspace, out childNamespaces, out childTypes);
 
-            var list = new List<ValueReference>();
+            var list = new List<ValueReference<TType, TValue>>();
             foreach (string typeName in childTypes)
             {
-                object tt = ctx.Adapter.GetType(ctx, typeName);
+                TType tt = Adaptor.GetType(ctx, typeName);
                 if (tt != null)
-                    list.Add(new TypeValueReference(ctx, tt));
+                    list.Add(new TypeValueReference<TType, TValue>(Adaptor, ctx, tt));
             }
 
             list.Sort((v1, v2) => string.Compare(v1.Name, v2.Name, StringComparison.CurrentCulture));
 
             // Child namespaces
-            var listNs = new List<ValueReference>();
+            var listNs = new List<ValueReference<TType, TValue>>();
             foreach (string ns in childNamespaces)
-                listNs.Add(new NamespaceValueReference(ctx, ns));
+                listNs.Add(new NamespaceValueReference<TType, TValue>(Adaptor, ctx, ns));
 
             listNs.Sort((v1, v2) => string.Compare(v1.Name, v2.Name, StringComparison.CurrentCulture));
 
@@ -128,9 +134,9 @@ namespace Mono.Debugging.Evaluation
             return list;
         }
 
-        protected override ObjectValue OnCreateObjectValue(EvaluationOptions options)
+        protected override DC.ObjectValue OnCreateObjectValue(DC.EvaluationOptions options)
         {
-            return Mono.Debugging.Client.ObjectValue.CreateObject(this, new ObjectPath(Name), "<namespace>", namspace, Flags, null);
+            return DC.ObjectValue.CreateObject(this, new DC.ObjectPath(Name), "<namespace>", namspace, Flags, null);
         }
 
         public override string CallToString()

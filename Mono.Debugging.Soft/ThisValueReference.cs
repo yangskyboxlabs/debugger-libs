@@ -31,29 +31,26 @@ using StackFrame = Mono.Debugger.Soft.StackFrame;
 
 namespace Mono.Debugging.Soft
 {
-    public class ThisValueReference : ValueReference
+    public class ThisValueReference : ValueReference<TypeMirror, Value>
     {
         readonly StackFrame frame;
-        object type;
+        TypeMirror type;
         Value value;
 
-        public ThisValueReference(EvaluationContext ctx, StackFrame frame)
-            : base(ctx)
+        public ThisValueReference(
+            SoftDebuggerAdaptor adaptor,
+            EvaluationContext ctx,
+            StackFrame frame)
+            : base(adaptor, ctx)
         {
             this.frame = frame;
         }
 
-        public override ObjectValueFlags Flags
-        {
-            get { return ObjectValueFlags.Field | ObjectValueFlags.ReadOnly; }
-        }
+        public override ObjectValueFlags Flags => ObjectValueFlags.Field | ObjectValueFlags.ReadOnly;
 
-        public override string Name
-        {
-            get { return "this"; }
-        }
+        public override string Name => "this";
 
-        public override object Value
+        public override Value Value
         {
             get
             {
@@ -66,18 +63,18 @@ namespace Mono.Debugging.Soft
             {
                 if (frame.VirtualMachine.Version.AtLeast(2, 44))
                 {
-                    this.value = (Value)value;
-                    frame.SetThis((Value)value);
+                    this.value = value;
+                    frame.SetThis(value);
                 }
             }
         }
 
-        public override object Type
+        public override TypeMirror Type
         {
             get
             {
                 if (type == null)
-                    type = Context.Adapter.GetValueType(Context, Value);
+                    type = Adaptor.GetValueType(Context, Value);
 
                 return type;
             }

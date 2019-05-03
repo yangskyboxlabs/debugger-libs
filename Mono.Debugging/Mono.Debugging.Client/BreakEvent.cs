@@ -144,37 +144,37 @@ namespace Mono.Debugging.Client
             }
         }
 
-        /// <summary>
-        /// Gets the status of the break event
-        /// </summary>
-        /// <returns>
-        /// The status of the break event for the given debug session
-        /// </returns>
-        /// <param name='session'>
-        /// Session for which to get the status of the break event
-        /// </param>
-        public BreakEventStatus GetStatus(DebuggerSession session)
-        {
-            if (store == null || session == null)
-                return BreakEventStatus.Disconnected;
-            return session.GetBreakEventStatus(this);
-        }
+//        /// <summary>
+//        /// Gets the status of the break event
+//        /// </summary>
+//        /// <returns>
+//        /// The status of the break event for the given debug session
+//        /// </returns>
+//        /// <param name='session'>
+//        /// Session for which to get the status of the break event
+//        /// </param>
+//        public BreakEventStatus GetStatus(IDebuggerSession session)
+//        {
+//            if (store == null || session == null)
+//                return BreakEventStatus.Disconnected;
+//            return session.GetBreakEventStatus(this);
+//        }
 
-        /// <summary>
-        /// Gets a message describing the status of the break event
-        /// </summary>
-        /// <returns>
-        /// The status message of the break event for the given debug session
-        /// </returns>
-        /// <param name='session'>
-        /// Session for which to get the status message of the break event
-        /// </param>
-        public string GetStatusMessage(DebuggerSession session)
-        {
-            if (store == null || session == null)
-                return string.Empty;
-            return session.GetBreakEventStatusMessage(this);
-        }
+//        /// <summary>
+//        /// Gets a message describing the status of the break event
+//        /// </summary>
+//        /// <returns>
+//        /// The status message of the break event for the given debug session
+//        /// </returns>
+//        /// <param name='session'>
+//        /// Session for which to get the status message of the break event
+//        /// </param>
+//        public string GetStatusMessage(IDebuggerSession session)
+//        {
+//            if (store == null || session == null)
+//                return string.Empty;
+//            return session.GetBreakEventStatusMessage(this);
+//        }
 
         /// <summary>
         /// Gets or sets the expression to be traced when the breakpoint is hit

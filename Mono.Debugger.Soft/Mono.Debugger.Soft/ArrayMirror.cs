@@ -76,14 +76,14 @@ namespace Mono.Debugger.Soft
                 // FIXME: Multiple dimensions
                 if (index < 0 || index > Length - 1)
                     throw new IndexOutOfRangeException();
-                return vm.DecodeValue(vm.conn.Array_GetValues(id, index, 1)[0]);
+                return vm.DecodeValue(vm.conn.Array_GetValues(id, index, 1)[0], Domain);
             }
             set
             {
                 // FIXME: Multiple dimensions
                 if (index < 0 || index > Length - 1)
                     throw new IndexOutOfRangeException();
-                vm.conn.Array_SetValues(id, index, new ValueImpl[] { vm.EncodeValue(value) });
+                vm.conn.Array_SetValues(id, index, new[] { vm.EncodeValue(value) });
             }
         }
 
@@ -92,13 +92,13 @@ namespace Mono.Debugger.Soft
             // FIXME: Multiple dimensions
             if (index < 0 || index > Length - length)
                 throw new IndexOutOfRangeException();
-            return vm.DecodeValues(vm.conn.Array_GetValues(id, index, length));
+            return vm.DecodeValues(vm.conn.Array_GetValues(id, index, length), Domain);
         }
 
         public void SetValues(int index, Value[] values)
         {
             if (values == null)
-                throw new ArgumentNullException("values");
+                throw new ArgumentNullException(nameof(values));
 
             // FIXME: Multiple dimensions
             if (index < 0 || index > Length - values.Length)
@@ -129,8 +129,8 @@ namespace Mono.Debugger.Soft
             public SimpleEnumerator(ArrayMirror arr)
             {
                 this.arr = arr;
-                this.pos = -1;
-                this.length = arr.Length;
+                pos = -1;
+                length = arr.Length;
             }
 
             public object Current

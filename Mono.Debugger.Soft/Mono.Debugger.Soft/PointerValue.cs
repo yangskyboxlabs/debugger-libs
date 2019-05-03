@@ -42,15 +42,9 @@ namespace Mono.Debugger.Soft
             this.addr = addr;
         }
 
-        public long Address
-        {
-            get { return addr; }
-        }
+        public long Address => addr;
 
-        public TypeMirror Type
-        {
-            get { return type; }
-        }
+        public override TypeMirror Type => type;
 
         // Since protocol version 2.46
         public Value Value
@@ -60,7 +54,7 @@ namespace Mono.Debugger.Soft
                 if (Address == 0)
                     return null;
 
-                return vm.DecodeValue(vm.conn.Pointer_GetValue(Address, Type));
+                return vm.DecodeValue(vm.conn.Pointer_GetValue(Address, Type), Type.Assembly.Domain);
             }
         }
 
@@ -78,7 +72,7 @@ namespace Mono.Debugger.Soft
 
         public override string ToString()
         {
-            return string.Format("PointerValue<({0}) 0x{1:x}>", type.CSharpName, addr);
+            return $"PointerValue<({type.CSharpName}) 0x{addr:x}>";
         }
     }
 }

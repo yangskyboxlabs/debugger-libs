@@ -8,26 +8,29 @@ namespace Mono.Debugger.Soft
      */
     public class PrimitiveValue : Value
     {
-        object value;
+        readonly object value;
+        readonly TypeMirror type;
 
-        public PrimitiveValue(VirtualMachine vm, object value)
-            : base(vm, 0)
+        public PrimitiveValue(object value, TypeMirror type)
+            : base(type.VirtualMachine, 0)
         {
             this.value = value;
         }
 
-        public object Value
-        {
-            get { return value; }
-        }
+        public PrimitiveValue(object value, AppDomainMirror appDomain)
+            : this(value, value == null
+                ? appDomain.Corlib.GetType("System.Object", false, false)
+                : appDomain.GetCorrespondingType(value.GetType())) { }
+
+        public object Value => value;
+        public override TypeMirror Type => type;
 
         public override bool Equals(object obj)
         {
             if (value == obj)
                 return true;
 
-            var primitive = obj as PrimitiveValue;
-            if (primitive != null)
+            if (obj is PrimitiveValue primitive)
                 return value == primitive.Value;
 
             return base.Equals(obj);

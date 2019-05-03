@@ -25,7 +25,6 @@
 // THE SOFTWARE.
 
 using System;
-using System.Threading;
 using Mono.Debugger.Soft;
 using Mono.Debugging.Evaluation;
 using DC = Mono.Debugging.Client;
@@ -49,23 +48,6 @@ namespace Mono.Debugging.Soft
             Thread = frame.Thread;
             Domain = frame.Domain;
 
-            string method = frame.Method.Name;
-            if (frame.Method.DeclaringType != null)
-                method = frame.Method.DeclaringType.FullName + "." + method;
-            var location = new DC.SourceLocation(method, frame.FileName, frame.LineNumber, frame.ColumnNumber, frame.EndLineNumber, frame.EndColumnNumber, frame.Location.SourceFileHash);
-            string language;
-
-            if (frame.Method != null)
-            {
-                language = frame.IsNativeTransition ? "Transition" : "Managed";
-            }
-            else
-            {
-                language = "Native";
-            }
-
-            Evaluator = session.GetEvaluator(new DC.StackFrame(frame.ILOffset, location, language, session.IsExternalCode(frame), true));
-            Adapter = session.Adaptor;
             this.session = session;
             stackVersion = session.StackVersion;
             sourceAvailable = !string.IsNullOrEmpty(frame.FileName) && System.IO.File.Exists(frame.FileName);
@@ -79,7 +61,7 @@ namespace Mono.Debugging.Soft
                     UpdateFrame();
                 return frame;
             }
-            set { frame = value; }
+            set => frame = value;
         }
 
         public bool SourceCodeAvailable
@@ -127,107 +109,6 @@ namespace Mono.Debugging.Soft
         static bool IsValueTypeOrPrimitive(Type type)
         {
             return type != null && (type.IsValueType || type.IsPrimitive);
-        }
-
-        public Value RuntimeInvoke(MethodMirror method, object target, Value[] values)
-        {
-            Value[] outArgs;
-            return RuntimeInvoke(method, target, values, false, out outArgs);
-        }
-
-        public Value RuntimeInvoke(MethodMirror method, object target, Value[] values, out Value[] outArgs)
-        {
-            return RuntimeInvoke(method, target, values, true, out outArgs);
-        }
-
-        Value RuntimeInvoke(MethodMirror method, object target, Value[] values, bool enableOutArgs, out Value[] outArgs)
-        {
-            outArgs = null;
-            if (values != null)
-            {
-                // Some arguments may need to be boxed
-                var mparams = method.GetParameters();
-                if (mparams.Length != values.Length)
-                    throw new EvaluatorException("Invalid number of arguments when calling: " + method.Name);
-
-                for (int n = 0; n < mparams.Length; n++)
-                {
-                    var tm = mparams[n].ParameterType;
-                    if (tm.IsValueType || tm.IsPrimitive || tm.FullName.StartsWith("System.Nullable`1", StringComparison.Ordinal))
-                        continue;
-
-                    var type = Adapter.GetValueType(this, values[n]);
-                    var argTypeMirror = type as TypeMirror;
-                    var argType = type as Type;
-
-                    if (IsValueTypeOrPrimitive(argTypeMirror) || IsValueTypeOrPrimitive(argType))
-                    {
-                        // A value type being assigned to a parameter which is not a value type. The value has to be boxed.
-                        try
-                        {
-                            values[n] = Thread.Domain.CreateBoxedValue(values[n]);
-                        }
-                        catch (NotSupportedException)
-                        {
-                            // This runtime doesn't support creating boxed values
-                            throw new EvaluatorException("This runtime does not support creating boxed values.");
-                        }
-                    }
-                }
-            }
-
-            if (!method.IsStatic && method.DeclaringType.IsClass && !IsValueTypeOrPrimitive(method.DeclaringType))
-            {
-                object type = Adapter.GetValueType(this, target);
-                var targetTypeMirror = type as TypeMirror;
-                var targetType = type as Type;
-
-                if ((target is StructMirror && ((StructMirror)target).Type != method.DeclaringType) ||
-                    (IsValueTypeOrPrimitive(targetTypeMirror) || IsValueTypeOrPrimitive(targetType)))
-                {
-                    // A value type being assigned to a parameter which is not a value type. The value has to be boxed.
-                    try
-                    {
-                        target = Thread.Domain.CreateBoxedValue((Value)target);
-                    }
-                    catch (NotSupportedException)
-                    {
-                        // This runtime doesn't support creating boxed values
-                        throw new EvaluatorException("This runtime does not support creating boxed values.");
-                    }
-                }
-            }
-
-            try
-            {
-                return method.Evaluate(target is TypeMirror ? null : (Value)target, values);
-            }
-            catch (NotSupportedException)
-            {
-                AssertTargetInvokeAllowed();
-                var threadState = Thread.ThreadState;
-                if ((threadState & ThreadState.WaitSleepJoin) == ThreadState.WaitSleepJoin)
-                {
-                    DC.DebuggerLoggingService.LogMessage("Thread state before evaluation is {0}", threadState);
-                    throw new EvaluatorException("Evaluation is not allowed when the thread is in 'Wait' state");
-                }
-
-                var mc = new MethodCall(this, method, target, values, enableOutArgs);
-
-                //Since runtime is returning NOT_SUSPENDED error if two methods invokes are executed
-                //at same time we have to lock invoking to prevent this...
-                lock (method.VirtualMachine)
-                {
-                    Adapter.AsyncExecute(mc, Options.EvaluationTimeout);
-                }
-
-                if (enableOutArgs)
-                {
-                    outArgs = mc.OutArgs;
-                }
-
-                return mc.ReturnValue;
-            }
         }
 
         void UpdateFrame()

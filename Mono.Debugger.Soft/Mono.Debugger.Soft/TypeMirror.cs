@@ -556,7 +556,12 @@ namespace Mono.Debugger.Soft
                 ids[i] = fields[i].Id;
             try
             {
-                return vm.DecodeValues(vm.conn.Type_GetValues(id, ids, thread != null ? thread.Id : 0));
+                if (vm.Version.AtLeast(2, 19))
+                {
+                    return vm.DecodeValues(vm.conn.Type_GetValues(id, ids, thread?.Id ?? 0), Assembly.Domain);
+                }
+
+                return vm.DecodeValues(vm.conn.Type_GetValues(id, ids, 0), Assembly.Domain);
             }
             catch (CommandException ex)
             {

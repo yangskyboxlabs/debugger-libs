@@ -32,32 +32,31 @@ using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-    public class RawViewSource : RemoteFrameObject, IObjectValueSource
+    public class RawViewSource<TType, TValue> : RemoteFrameObject, IObjectValueSource
+        where TType : class
+        where TValue : class
     {
-        object obj;
-        EvaluationContext ctx;
-        IObjectSource objectSource;
+        readonly TValue obj;
+        readonly EvaluationContext ctx;
+        readonly IObjectSource<TValue> objectSource;
+        readonly ObjectValueAdaptor<TType, TValue> adaptor;
 
-        public RawViewSource(EvaluationContext ctx, IObjectSource objectSource, object obj)
+        public RawViewSource(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx,
+            IObjectSource<TValue> objectSource,
+            TValue obj)
         {
+            this.adaptor = adaptor;
             this.ctx = ctx;
             this.obj = obj;
             this.objectSource = objectSource;
         }
 
-        public static ObjectValue CreateRawView(EvaluationContext ctx, IObjectSource objectSource, object obj)
-        {
-            RawViewSource src = new RawViewSource(ctx, objectSource, obj);
-            src.Connect();
-            ObjectValue val = ObjectValue.CreateObject(src, new ObjectPath("Raw View"), "", "", ObjectValueFlags.Group | ObjectValueFlags.ReadOnly | ObjectValueFlags.NoRefresh, null);
-            val.ChildSelector = "";
-            return val;
-        }
-
         public ObjectValue[] GetChildren(ObjectPath path, int index, int count, EvaluationOptions options)
         {
             EvaluationContext cctx = ctx.WithOptions(options);
-            return cctx.Adapter.GetObjectValueChildren(cctx, objectSource, cctx.Adapter.GetValueType(cctx, obj), obj, index, count, false);
+            return adaptor.GetObjectValueChildren(cctx, objectSource, adaptor.GetValueType(cctx, obj), obj, index, count, false);
         }
 
         public ObjectValue GetValue(ObjectPath path, EvaluationOptions options)
@@ -70,14 +69,32 @@ namespace Mono.Debugging.Evaluation
             throw new NotSupportedException();
         }
 
-        public void SetRawValue(ObjectPath path, object value, EvaluationOptions options)
+        public void SetRawValue(ObjectPath path, IRawValue value, EvaluationOptions options)
         {
             throw new NotImplementedException();
         }
 
-        public object GetRawValue(ObjectPath path, EvaluationOptions options)
+        public IRawValue GetRawValue(ObjectPath path, EvaluationOptions options)
         {
             throw new NotImplementedException();
+        }
+    }
+
+    public static class RawViewSource
+    {
+        public static ObjectValue CreateRawView<TType, TValue>(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx,
+            IObjectSource<TValue> objectSource,
+            TValue obj)
+            where TType : class
+            where TValue : class
+        {
+            RawViewSource<TType, TValue> src = new RawViewSource<TType, TValue>(adaptor, ctx, objectSource, obj);
+            src.Connect();
+            ObjectValue val = ObjectValue.CreateObject(src, new ObjectPath("Raw View"), "", "", ObjectValueFlags.Group | ObjectValueFlags.ReadOnly | ObjectValueFlags.NoRefresh, null);
+            val.ChildSelector = "";
+            return val;
         }
     }
 }

@@ -5,11 +5,13 @@ namespace Mono.Debugger.Soft
 {
     internal class ILInterpreter
     {
-        MethodMirror method;
+        readonly MethodMirror method;
+        readonly AppDomainMirror appDomain;
 
         public ILInterpreter(MethodMirror method)
         {
             this.method = method;
+            this.appDomain = method.DeclaringType.Assembly.Domain;
         }
 
         public Value Evaluate(Value this_val, Value[] args)
@@ -89,7 +91,7 @@ namespace Mono.Debugger.Soft
 
                     try
                     {
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, 0);
+                        stack[sp++] = new PrimitiveValue(0, appDomain);
                     }
                     catch (ArgumentException)
                     {
@@ -103,7 +105,7 @@ namespace Mono.Debugger.Soft
 
                     try
                     {
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, 1);
+                        stack[sp++] = new PrimitiveValue(1, appDomain);
                     }
                     catch (ArgumentException)
                     {
@@ -117,7 +119,7 @@ namespace Mono.Debugger.Soft
 
                     try
                     {
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, 2);
+                        stack[sp++] = new PrimitiveValue(2, appDomain);
                     }
                     catch (ArgumentException)
                     {
@@ -131,7 +133,7 @@ namespace Mono.Debugger.Soft
 
                     try
                     {
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, 3);
+                        stack[sp++] = new PrimitiveValue(3, appDomain);
                     }
                     catch (ArgumentException)
                     {
@@ -145,7 +147,7 @@ namespace Mono.Debugger.Soft
 
                     try
                     {
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, 4);
+                        stack[sp++] = new PrimitiveValue(4, appDomain);
                     }
                     catch (ArgumentException)
                     {
@@ -159,7 +161,7 @@ namespace Mono.Debugger.Soft
 
                     try
                     {
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, 5);
+                        stack[sp++] = new PrimitiveValue(5, appDomain);
                     }
                     catch (ArgumentException)
                     {
@@ -173,7 +175,7 @@ namespace Mono.Debugger.Soft
 
                     try
                     {
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, 6);
+                        stack[sp++] = new PrimitiveValue(6, appDomain);
                     }
                     catch (ArgumentException)
                     {
@@ -187,7 +189,7 @@ namespace Mono.Debugger.Soft
 
                     try
                     {
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, 7);
+                        stack[sp++] = new PrimitiveValue(7, appDomain);
                     }
                     catch (ArgumentException)
                     {
@@ -201,7 +203,7 @@ namespace Mono.Debugger.Soft
 
                     try
                     {
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, 8);
+                        stack[sp++] = new PrimitiveValue(8, appDomain);
                     }
                     catch (ArgumentException)
                     {
@@ -215,7 +217,7 @@ namespace Mono.Debugger.Soft
 
                     try
                     {
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, -1);
+                        stack[sp++] = new PrimitiveValue(-1, appDomain);
                     }
                     catch (ArgumentException)
                     {
@@ -229,7 +231,7 @@ namespace Mono.Debugger.Soft
 
                     try
                     {
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, ins.Operand);
+                        stack[sp++] = new PrimitiveValue(ins.Operand, appDomain);
                     }
                     catch (ArgumentException)
                     {
@@ -243,7 +245,7 @@ namespace Mono.Debugger.Soft
 
                     try
                     {
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, ins.Operand);
+                        stack[sp++] = new PrimitiveValue(ins.Operand, appDomain);
                     }
                     catch (ArgumentException)
                     {
@@ -257,7 +259,7 @@ namespace Mono.Debugger.Soft
 
                     try
                     {
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, ins.Operand);
+                        stack[sp++] = new PrimitiveValue(ins.Operand, appDomain);
                     }
                     catch (ArgumentException)
                     {
@@ -271,7 +273,7 @@ namespace Mono.Debugger.Soft
 
                     try
                     {
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, ins.Operand);
+                        stack[sp++] = new PrimitiveValue(ins.Operand, appDomain);
                     }
                     catch (ArgumentException)
                     {
@@ -285,7 +287,7 @@ namespace Mono.Debugger.Soft
 
                     try
                     {
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, ins.Operand);
+                        stack[sp++] = new PrimitiveValue(ins.Operand, appDomain);
                     }
                     catch (ArgumentException)
                     {
@@ -300,7 +302,7 @@ namespace Mono.Debugger.Soft
                     try
                     {
                         var primitive = (PrimitiveValue)stack[--sp];
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, Convert.ToInt32(primitive.Value));
+                        stack[sp++] = new PrimitiveValue(Convert.ToInt32(primitive.Value), appDomain);
                     }
                     catch
                     {
@@ -315,7 +317,7 @@ namespace Mono.Debugger.Soft
                     try
                     {
                         var primitive = (PrimitiveValue)stack[--sp];
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, Convert.ToSByte(primitive.Value));
+                        stack[sp++] = new PrimitiveValue(Convert.ToSByte(primitive.Value), appDomain);
                     }
                     catch
                     {
@@ -330,7 +332,7 @@ namespace Mono.Debugger.Soft
                     try
                     {
                         var primitive = (PrimitiveValue)stack[--sp];
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, Convert.ToByte(primitive.Value));
+                        stack[sp++] = new PrimitiveValue(Convert.ToByte(primitive.Value), appDomain);
                     }
                     catch
                     {
@@ -345,7 +347,7 @@ namespace Mono.Debugger.Soft
                     try
                     {
                         var primitive = (PrimitiveValue)stack[--sp];
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, Convert.ToInt16(primitive.Value));
+                        stack[sp++] = new PrimitiveValue(Convert.ToInt16(primitive.Value), appDomain);
                     }
                     catch
                     {
@@ -360,7 +362,7 @@ namespace Mono.Debugger.Soft
                     try
                     {
                         var primitive = (PrimitiveValue)stack[--sp];
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, Convert.ToUInt16(primitive.Value));
+                        stack[sp++] = new PrimitiveValue(Convert.ToUInt16(primitive.Value), appDomain);
                     }
                     catch
                     {
@@ -375,7 +377,7 @@ namespace Mono.Debugger.Soft
                     try
                     {
                         var primitive = (PrimitiveValue)stack[--sp];
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, Convert.ToInt32(primitive.Value));
+                        stack[sp++] = new PrimitiveValue(Convert.ToInt32(primitive.Value), appDomain);
                     }
                     catch
                     {
@@ -390,7 +392,7 @@ namespace Mono.Debugger.Soft
                     try
                     {
                         var primitive = (PrimitiveValue)stack[--sp];
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, Convert.ToUInt32(primitive.Value));
+                        stack[sp++] = new PrimitiveValue(Convert.ToUInt32(primitive.Value), appDomain);
                     }
                     catch
                     {
@@ -405,7 +407,7 @@ namespace Mono.Debugger.Soft
                     try
                     {
                         var primitive = (PrimitiveValue)stack[--sp];
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, Convert.ToInt64(primitive.Value));
+                        stack[sp++] = new PrimitiveValue(Convert.ToInt64(primitive.Value), appDomain);
                     }
                     catch
                     {
@@ -420,7 +422,7 @@ namespace Mono.Debugger.Soft
                     try
                     {
                         var primitive = (PrimitiveValue)stack[--sp];
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, Convert.ToUInt64(primitive.Value));
+                        stack[sp++] = new PrimitiveValue(Convert.ToUInt64(primitive.Value), appDomain);
                     }
                     catch
                     {
@@ -435,7 +437,7 @@ namespace Mono.Debugger.Soft
                     try
                     {
                         var primitive = (PrimitiveValue)stack[--sp];
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, Convert.ToSingle(primitive.Value));
+                        stack[sp++] = new PrimitiveValue(Convert.ToSingle(primitive.Value), appDomain);
                     }
                     catch
                     {
@@ -450,7 +452,7 @@ namespace Mono.Debugger.Soft
                     try
                     {
                         var primitive = (PrimitiveValue)stack[--sp];
-                        stack[sp++] = new PrimitiveValue(method.VirtualMachine, Convert.ToDouble(primitive.Value));
+                        stack[sp++] = new PrimitiveValue(Convert.ToDouble(primitive.Value), appDomain);
                     }
                     catch
                     {
@@ -490,40 +492,40 @@ namespace Mono.Debugger.Soft
                                 switch (method.ReturnType.CSharpName)
                                 {
                                     case "double":
-                                        res = new PrimitiveValue(method.VirtualMachine, Convert.ToDouble(primitive.Value));
+                                        res = new PrimitiveValue(Convert.ToDouble(primitive.Value), appDomain);
                                         break;
                                     case "float":
-                                        res = new PrimitiveValue(method.VirtualMachine, Convert.ToSingle(primitive.Value));
+                                        res = new PrimitiveValue(Convert.ToSingle(primitive.Value), appDomain);
                                         break;
                                     case "ulong":
-                                        res = new PrimitiveValue(method.VirtualMachine, Convert.ToUInt64(primitive.Value));
+                                        res = new PrimitiveValue(Convert.ToUInt64(primitive.Value), appDomain);
                                         break;
                                     case "long":
-                                        res = new PrimitiveValue(method.VirtualMachine, Convert.ToInt64(primitive.Value));
+                                        res = new PrimitiveValue(Convert.ToInt64(primitive.Value), appDomain);
                                         break;
                                     case "uint":
-                                        res = new PrimitiveValue(method.VirtualMachine, Convert.ToUInt32(primitive.Value));
+                                        res = new PrimitiveValue(Convert.ToUInt32(primitive.Value), appDomain);
                                         break;
                                     case "int":
-                                        res = new PrimitiveValue(method.VirtualMachine, Convert.ToInt32(primitive.Value));
+                                        res = new PrimitiveValue(Convert.ToInt32(primitive.Value), appDomain);
                                         break;
                                     case "ushort":
-                                        res = new PrimitiveValue(method.VirtualMachine, Convert.ToUInt16(primitive.Value));
+                                        res = new PrimitiveValue(Convert.ToUInt16(primitive.Value), appDomain);
                                         break;
                                     case "short":
-                                        res = new PrimitiveValue(method.VirtualMachine, Convert.ToInt16(primitive.Value));
+                                        res = new PrimitiveValue(Convert.ToInt16(primitive.Value), appDomain);
                                         break;
                                     case "sbyte":
-                                        res = new PrimitiveValue(method.VirtualMachine, Convert.ToSByte(primitive.Value));
+                                        res = new PrimitiveValue(Convert.ToSByte(primitive.Value), appDomain);
                                         break;
                                     case "byte":
-                                        res = new PrimitiveValue(method.VirtualMachine, Convert.ToByte(primitive.Value));
+                                        res = new PrimitiveValue(Convert.ToByte(primitive.Value), appDomain);
                                         break;
                                     case "char":
-                                        res = new PrimitiveValue(method.VirtualMachine, Convert.ToChar(primitive.Value));
+                                        res = new PrimitiveValue(Convert.ToChar(primitive.Value), appDomain);
                                         break;
                                     case "bool":
-                                        res = new PrimitiveValue(method.VirtualMachine, Convert.ToBoolean(primitive.Value));
+                                        res = new PrimitiveValue(Convert.ToBoolean(primitive.Value), appDomain);
                                         break;
                                 }
                             }

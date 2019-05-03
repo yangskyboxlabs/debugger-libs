@@ -32,27 +32,40 @@ using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-    class EnumerableSource : IObjectValueSource
+    class EnumerableSource<TType, TValue> : IObjectValueSource
+        where TType : class
+        where TValue : class
     {
-        object obj;
-        object objType;
-        EvaluationContext ctx;
+        readonly TValue obj;
+        readonly TType objType;
+        readonly ObjectValueAdaptor<TType, TValue> adaptor;
+        readonly EvaluationContext ctx;
         List<ObjectValue> elements;
-        List<object> values;
+        List<TValue> values;
         int currentIndex = 0;
-        object enumerator;
-        object enumeratorType;
+        TValue enumerator;
+        TType enumeratorType;
 
-        public EnumerableSource(object source, object type, EvaluationContext ctx)
+        public EnumerableSource(
+            TValue source,
+            TType type,
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx)
         {
             this.obj = source;
             this.objType = type;
+            this.adaptor = adaptor;
             this.ctx = ctx;
         }
 
+        public IDebuggerHierarchicalObject ParentSource { get; private set; }
+
         bool MoveNext()
         {
-            return (bool)ctx.Adapter.TargetObjectToObject(ctx, ctx.Adapter.RuntimeInvoke(ctx, enumeratorType, enumerator, "MoveNext", new object[0], new object[0]));
+            return adaptor.Invocator.InvokeInstanceMethod(ctx, enumeratorType, enumerator, nameof(MoveNext), adaptor.EmptyTypeArray, adaptor.EmptyTypeArray)
+                .Result
+                .ToRawValue(adaptor, ctx)
+                .ToPrimitive<bool>();
         }
 
         void Fetch(int maxIndex)
@@ -60,30 +73,100 @@ namespace Mono.Debugging.Evaluation
             if (elements == null)
             {
                 elements = new List<ObjectValue>();
-                values = new List<object>();
-                enumerator = ctx.Adapter.RuntimeInvoke(ctx, objType, obj, "GetEnumerator", new object[0], new object[0]);
-                enumeratorType = ctx.Adapter.GetImplementedInterfaces(ctx, ctx.Adapter.GetValueType(ctx, enumerator)).First(f => ctx.Adapter.GetTypeName(ctx, f) == "System.Collections.IEnumerator");
+                values = new List<TValue>();
+                try
+                {
+                    enumerator = adaptor.Invocator.InvokeInstanceMethod(ctx, objType, obj, "GetEnumerator", adaptor.EmptyTypeArray, adaptor.EmptyTypeArray).Result;
+                    enumeratorType = adaptor.GetImplementedInterfaces(ctx, adaptor.GetValueType(ctx, enumerator)).First(f => adaptor.GetTypeName(ctx, f) == "System.Collections.IEnumerator");
+                }
+
+//                catch (TargetInvokeDisabledException ex)
+//                {
+//                    this.elements.Add(ObjectValue.CreateTargetInvokeNotSupported((IObjectValueSource) this, ObjectPath.CreatePath((IDebuggerHierarchicalObject) this), "", ObjectValueFlags.NoRefresh, this.Context.Options, "Results"));
+//                    return;
+//                }
+//                catch (CrossThreadDependencyRejectedException ex)
+//                {
+//                    this.elements.Add(ObjectValue.CreateCrossThreadDependencyRejected((IObjectValueSource) this, ObjectPath.CreatePath((IDebuggerHierarchicalObject) this), string.Empty, ObjectValueFlags.NoRefresh, "Results"));
+//                    return;
+//                }
+//                catch (EvaluatorExceptionThrownExceptionBase ex)
+//                {
+//                    this.elements.Add(ObjectValue.CreateEvaluationException<TContext, TType, TValue>(this.adapter, ctx, (IObjectValueSource) this, new ObjectPath(new string[1]
+//                    {
+//                        "GetEnumerator()"
+//                    }), ex, ObjectValueFlags.None));
+//                    return;
+//                }
+                catch (EvaluatorAbortedException ex)
+                {
+                    elements.Add(ObjectValue.CreateFatalError("GetEnumerator", ex.Message, ObjectValueFlags.Error));
+                    return;
+                }
+                catch (TimeOutException ex)
+                {
+                    elements.Add(ObjectValue.CreateFatalError("GetEnumerator", ex.Message, ObjectValueFlags.Error));
+                    return;
+                }
+                catch (EvaluatorException ex)
+                {
+                    elements.Add(ObjectValue.CreateFatalError("GetEnumerator", ex.Message, ObjectValueFlags.Error));
+                    return;
+                }
             }
 
-            while (maxIndex > elements.Count && MoveNext())
+            while (maxIndex > elements.Count && !ctx.CancellationToken.IsCancellationRequested && MoveNext())
             {
-                var valCurrent = ctx.Adapter.GetMember(ctx, null, enumeratorType, enumerator, "Current");
-                var val = valCurrent.Value;
+                string name = "[" + currentIndex + "]";
+                TValue val;
+                ValueReference<TType, TValue> valCurrent;
+                try
+                {
+                    valCurrent = adaptor.GetMember(ctx, null, enumeratorType, enumerator, "Current");
+                    val = valCurrent.Value;
+                }
+
+//                catch (EvaluatorExceptionThrownExceptionBase ex)
+//                {
+//                    this.elements.Add(ObjectValue.CreateEvaluationException<TContext, TType, TValue>(this.adapter, ctx, (IObjectValueSource) this, new ObjectPath(new string[1]
+//                    {
+//                        name
+//                    }), ex, ObjectValueFlags.None));
+//                    ++this.currentIndex;
+//                    break;
+//                }
+                catch (EvaluatorAbortedException ex)
+                {
+                    elements.Add(ObjectValue.CreateFatalError(name, ex.Message, ObjectValueFlags.Error));
+                    break;
+                }
+                catch (TimeOutException ex)
+                {
+                    elements.Add(ObjectValue.CreateFatalError(name, ex.Message, ObjectValueFlags.Error));
+                    ++currentIndex;
+                    continue;
+                }
+                catch (EvaluatorException ex)
+                {
+                    elements.Add(ObjectValue.CreateFatalError("GetEnumerator", ex.Message, ObjectValueFlags.Error));
+                    break;
+                }
+
                 values.Add(val);
                 if (val != null)
                 {
-                    elements.Add(ctx.Adapter.CreateObjectValue(ctx, valCurrent, new ObjectPath("[" + currentIndex + "]"), val, ObjectValueFlags.ReadOnly));
+                    elements.Add(adaptor.CreateObjectValue(ctx, valCurrent, new ObjectPath(name), val, ObjectValueFlags.ReadOnly));
                 }
                 else
                 {
-                    elements.Add(Mono.Debugging.Client.ObjectValue.CreateNullObject(this, "[" + currentIndex + "]", ctx.Adapter.GetDisplayTypeName(ctx.Adapter.GetTypeName(ctx, valCurrent.Type)), ObjectValueFlags.ReadOnly));
+                    elements.Add(ObjectValue.CreateNullObject(this, name, adaptor.GetDisplayTypeName(adaptor.GetTypeName(ctx, valCurrent.Type)), ObjectValueFlags.ReadOnly));
                 }
 
                 currentIndex++;
             }
         }
 
-        public object GetElement(int idx)
+        public TValue GetElement(int idx)
         {
             return values[idx];
         }
@@ -93,7 +176,7 @@ namespace Mono.Debugging.Evaluation
             int idx;
             if (int.TryParse(path.LastName.Replace("[", "").Replace("]", ""), out idx))
             {
-                return ctx.Adapter.GetObjectValueChildren(ctx, null, values[idx], -1, -1);
+                return adaptor.GetObjectValueChildren(ctx, null, values[idx], -1, -1);
             }
 
             if (index < 0)
@@ -138,38 +221,44 @@ namespace Mono.Debugging.Evaluation
             return null;
         }
 
-        public object GetRawValue(ObjectPath path, EvaluationOptions options)
+        public IRawValue GetRawValue(ObjectPath path, EvaluationOptions options)
         {
             int idx = int.Parse(path.LastName.Replace("[", "").Replace("]", ""));
             EvaluationContext cctx = ctx.WithOptions(options);
-            return cctx.Adapter.ToRawValue(cctx, new EnumerableObjectSource(this, idx), GetElement(idx));
+            return adaptor.ToRawValue(cctx, new EnumerableObjectSource(this, idx), GetElement(idx));
         }
 
-        public void SetRawValue(ObjectPath path, object value, EvaluationOptions options)
+        public void SetRawValue(ObjectPath path, IRawValue value, EvaluationOptions options)
         {
             throw new InvalidOperationException("Elements of IEnumerable can not be set");
         }
-    }
 
-    class EnumerableObjectSource : IObjectSource
-    {
-        EnumerableSource enumerableSource;
-        int idx;
-
-        public EnumerableObjectSource(EnumerableSource enumerableSource, int idx)
+        class EnumerableObjectSource : IObjectSource<TValue>
         {
-            this.enumerableSource = enumerableSource;
-            this.idx = idx;
+            EnumerableSource<TType, TValue> enumerableSource;
+            int idx;
+
+            public EnumerableObjectSource(
+                EnumerableSource<TType, TValue> enumerableSource,
+                int idx)
+            {
+                this.enumerableSource = enumerableSource;
+                this.idx = idx;
+            }
+
+            #region IObjectSource implementation
+
+            public IDebuggerHierarchicalObject ParentSource => enumerableSource.ParentSource;
+
+            public TValue Value
+            {
+                get => enumerableSource.GetElement(idx);
+                set => throw new InvalidOperationException("Elements of IEnumerable can not be set");
+            }
+
+            public string Name => this.idx.ToString();
+
+            #endregion
         }
-
-        #region IObjectSource implementation
-
-        public object Value
-        {
-            get { return enumerableSource.GetElement(idx); }
-            set { throw new InvalidOperationException("Elements of IEnumerable can not be set"); }
-        }
-
-        #endregion
     }
 }

@@ -35,29 +35,38 @@ using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-    public abstract class ExpressionEvaluator
+    public abstract class ExpressionEvaluator<TType, TValue>
+        where TType : class
+        where TValue : class
     {
-        public ValueReference Evaluate(EvaluationContext ctx, string exp)
+        protected ObjectValueAdaptor<TType, TValue> Adaptor { get; }
+
+        public ExpressionEvaluator(ObjectValueAdaptor<TType, TValue> adaptor)
+        {
+            Adaptor = adaptor;
+        }
+
+        public ValueReference<TType, TValue> Evaluate(EvaluationContext ctx, string exp)
         {
             return Evaluate(ctx, exp, null);
         }
 
-        public virtual ValueReference Evaluate(EvaluationContext ctx, string exp, object expectedType)
+        public virtual ValueReference<TType, TValue> Evaluate(EvaluationContext ctx, string exp, TType expectedType)
         {
-            foreach (ValueReference var in ctx.Adapter.GetLocalVariables(ctx))
+            foreach (ValueReference<TType, TValue> var in Adaptor.GetLocalVariables(ctx))
                 if (var.Name == exp)
                     return var;
 
-            foreach (ValueReference var in ctx.Adapter.GetParameters(ctx))
+            foreach (ValueReference<TType, TValue> var in Adaptor.GetParameters(ctx))
                 if (var.Name == exp)
                     return var;
 
-            ValueReference thisVar = ctx.Adapter.GetThisReference(ctx);
+            ValueReference<TType, TValue> thisVar = Adaptor.GetThisReference(ctx);
             if (thisVar != null)
             {
                 if (thisVar.Name == exp)
                     return thisVar;
-                foreach (ValueReference cv in thisVar.GetChildReferences(ctx.Options))
+                foreach (ValueReference<TType, TValue> cv in thisVar.GetChildReferences(ctx.Options))
                     if (cv.Name == exp)
                         return cv;
             }
@@ -70,9 +79,9 @@ namespace Mono.Debugging.Evaluation
             return new ValidationResult(true, null);
         }
 
-        public string TargetObjectToString(EvaluationContext ctx, object obj)
+        public string TargetObjectToString(EvaluationContext ctx, TValue obj)
         {
-            object res = ctx.Adapter.TargetObjectToObject(ctx, obj);
+            object res = Adaptor.TargetObjectToObject(ctx, obj);
             if (res == null)
                 return null;
 
@@ -82,23 +91,22 @@ namespace Mono.Debugging.Evaluation
                 return res.ToString();
         }
 
-        public EvaluationResult TargetObjectToExpression(EvaluationContext ctx, object obj)
+        public EvaluationResult TargetObjectToEvaluationResult(EvaluationContext ctx, TValue obj)
         {
-            return ToExpression(ctx, ctx.Adapter.TargetObjectToObject(ctx, obj));
+            return ToExpression(ctx, Adaptor.TargetObjectToObject(ctx, obj));
         }
 
         public virtual EvaluationResult ToExpression(EvaluationContext ctx, object obj)
         {
             if (obj == null)
-                return new EvaluationResult("null");
-            else if (obj is IntPtr)
+                return new EvaluationResult("null", StringPresentationKind.Null);
+            if (obj is IntPtr p)
             {
-                IntPtr p = (IntPtr)obj;
                 return new EvaluationResult("0x" + p.ToInt64().ToString("x"));
             }
-            else if (obj is char)
+
+            if (obj is char c)
             {
-                char c = (char)obj;
                 string str;
                 if (c == '\'')
                     str = @"'\''";
@@ -106,42 +114,56 @@ namespace Mono.Debugging.Evaluation
                     str = "'\"'";
                 else
                     str = EscapeString("'" + c + "'");
-                return new EvaluationResult(str, ((int)c) + " " + str);
+                return new EvaluationResult(str, (int)c + " " + str);
             }
-            else if (obj is string)
-                return new EvaluationResult("\"" + EscapeString((string)obj) + "\"");
-            else if (obj is bool)
-                return new EvaluationResult(((bool)obj) ? "true" : "false");
-            else if (obj is decimal)
-                return new EvaluationResult(((decimal)obj).ToString(System.Globalization.CultureInfo.InvariantCulture));
-            else if (obj is EvaluationResult)
-                return (EvaluationResult)obj;
+
+            if (obj is string s)
+                return new EvaluationResult("\"" + EscapeString(s) + "\"");
+            if (obj is bool b)
+                return new EvaluationResult(b ? "true" : "false");
+            if (obj is decimal d)
+                return new EvaluationResult(d.ToString(CultureInfo.InvariantCulture));
+            if (obj is EvaluationResult evaluationResult)
+                return evaluationResult;
 
             if (ctx.Options.IntegerDisplayFormat == IntegerDisplayFormat.Hexadecimal)
             {
-                string fval = null;
-                if (obj is sbyte)
-                    fval = ((sbyte)obj).ToString("x2");
-                else if (obj is int)
-                    fval = ((int)obj).ToString("x4");
-                else if (obj is short)
-                    fval = ((short)obj).ToString("x8");
-                else if (obj is long)
-                    fval = ((long)obj).ToString("x16");
-                else if (obj is byte)
-                    fval = ((byte)obj).ToString("x2");
-                else if (obj is uint)
-                    fval = ((uint)obj).ToString("x4");
-                else if (obj is ushort)
-                    fval = ((ushort)obj).ToString("x8");
-                else if (obj is ulong)
-                    fval = ((ulong)obj).ToString("x16");
-
-                if (fval != null)
-                    return new EvaluationResult("0x" + fval);
+                string hexadecimalRespresentation = GetIntHexadecimalRepresentation(obj);
+                if (hexadecimalRespresentation != null)
+                    return new EvaluationResult(obj.ToString(), null, StringPresentationKind.Raw, "0x" + hexadecimalRespresentation);
             }
 
             return new EvaluationResult(obj.ToString());
+        }
+
+        static string GetIntHexadecimalRepresentation(object obj)
+        {
+            if (obj == null)
+            {
+                return null;
+            }
+
+            switch (obj)
+            {
+                case sbyte sb:
+                    return sb.ToString("X", CultureInfo.InvariantCulture);
+                case int i:
+                    return i.ToString("X", CultureInfo.InvariantCulture);
+                case short s:
+                    return s.ToString("X", CultureInfo.InvariantCulture);
+                case long l:
+                    return l.ToString("X", CultureInfo.InvariantCulture);
+                case byte b:
+                    return b.ToString("X", CultureInfo.InvariantCulture);
+                case uint ui:
+                    return ui.ToString("X", CultureInfo.InvariantCulture);
+                case ushort us:
+                    return us.ToString("X", CultureInfo.InvariantCulture);
+                case ulong ul:
+                    return ul.ToString("X", CultureInfo.InvariantCulture);
+            }
+
+            return null;
         }
 
         public static string EscapeString(string text)
@@ -207,26 +229,24 @@ namespace Mono.Debugging.Evaluation
             get { return true; }
         }
 
-        public abstract string Resolve(DebuggerSession session, SourceLocation location, string exp);
-
-        public virtual IEnumerable<ValueReference> GetLocalVariables(EvaluationContext ctx)
+        public virtual IEnumerable<ValueReference<TType, TValue>> GetLocalVariables(EvaluationContext ctx)
         {
-            return ctx.Adapter.GetLocalVariables(ctx);
+            return Adaptor.GetLocalVariables(ctx);
         }
 
-        public virtual ValueReference GetThisReference(EvaluationContext ctx)
+        public virtual ValueReference<TType, TValue> GetThisReference(EvaluationContext ctx)
         {
-            return ctx.Adapter.GetThisReference(ctx);
+            return Adaptor.GetThisReference(ctx);
         }
 
-        public virtual IEnumerable<ValueReference> GetParameters(EvaluationContext ctx)
+        public virtual IEnumerable<ValueReference<TType, TValue>> GetParameters(EvaluationContext ctx)
         {
-            return ctx.Adapter.GetParameters(ctx);
+            return Adaptor.GetParameters(ctx);
         }
 
-        public virtual ValueReference GetCurrentException(EvaluationContext ctx)
+        public virtual ValueReference<TType, TValue> GetCurrentException(EvaluationContext ctx)
         {
-            return ctx.Adapter.GetCurrentException(ctx);
+            return Adaptor.GetCurrentException(ctx);
         }
     }
 

@@ -60,7 +60,7 @@ namespace Mono.Debugging.Evaluation
             get { return runner.IsEvaluating; }
         }
 
-        internal DebuggerSession Session { get; set; }
+        internal IDebuggerSession Session { get; set; }
 
         public ObjectValue Run(string name, ObjectValueFlags flags, ObjectEvaluatorDelegate evaluator)
         {

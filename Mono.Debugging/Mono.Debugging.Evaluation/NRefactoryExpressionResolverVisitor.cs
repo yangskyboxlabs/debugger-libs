@@ -26,8 +26,11 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using ICSharpCode.NRefactory;
 using ICSharpCode.NRefactory.CSharp;
 using Mono.Debugging.Client;
+using Mono.Debugging.Evaluation.TypeResolution;
+using Mono.Debugging.Mono.Debugging.Utils;
 
 namespace Mono.Debugging.Evaluation
 {
@@ -36,8 +39,11 @@ namespace Mono.Debugging.Evaluation
     public class NRefactoryExpressionResolverVisitor : DepthFirstAstVisitor
     {
         readonly List<Replacement> replacements = new List<Replacement>();
+        readonly List<int> lineStartOffsets = new List<int>();
         readonly SourceLocation location;
-        readonly DebuggerSession session;
+        readonly EvaluationContext myCtx;
+        readonly ITypeResolver m_TypeResolverHandler;
+        readonly string[] namespaceImports;
         readonly string expression;
         string parentType;
 
@@ -48,11 +54,30 @@ namespace Mono.Debugging.Evaluation
             public int Length;
         }
 
-        public NRefactoryExpressionResolverVisitor(DebuggerSession session, SourceLocation location, string expression)
+        public NRefactoryExpressionResolverVisitor(
+            EvaluationContext ctx,
+            ITypeResolver typeResolver,
+            SourceLocation location,
+            string expression)
         {
-            this.expression = expression.Replace("\n", "").Replace("\r", "");
-            this.session = session;
+            this.expression = expression;
+            this.namespaceImports = ctx.Options.NamespaceImports;
+            this.myCtx = ctx;
+            m_TypeResolverHandler = typeResolver;
             this.location = location;
+            ComputeLineStartOffsets();
+        }
+
+        void ComputeLineStartOffsets()
+        {
+            int startIndex = 0;
+            while (startIndex >= 0)
+            {
+                lineStartOffsets.Add(startIndex);
+                startIndex = expression.IndexOf("\n", startIndex, StringComparison.Ordinal);
+                if (startIndex >= 0)
+                    ++startIndex;
+            }
         }
 
         internal string GetResolvedExpression()
@@ -91,12 +116,12 @@ namespace Mono.Debugging.Evaluation
 
         void ReplaceType(string name, int genericArgs, int offset, int length, bool memberType = false)
         {
-            string type = null;
+            string type;
 
             if (genericArgs == 0)
-                type = session.ResolveIdentifierAsType(name, location);
+                type = ResolveIdentifierAsType(myCtx, name);
             else
-                type = session.ResolveIdentifierAsType(name + "`" + genericArgs, location);
+                type = ResolveIdentifierAsType(myCtx, name + "`" + genericArgs);
 
             if (string.IsNullOrEmpty(type))
             {
@@ -119,12 +144,41 @@ namespace Mono.Debugging.Evaluation
             }
         }
 
+        protected internal string ResolveIdentifierAsType(EvaluationContext ctx, string identifier)
+        {
+            string name1 = m_TypeResolverHandler.Resolve(ctx, identifier, location);
+            if (name1 != null)
+                return CropAndReplace(name1);
+            foreach (string namespaceImport in namespaceImports)
+            {
+                string name2 = m_TypeResolverHandler.Resolve(ctx, namespaceImport + "." + identifier, location);
+                if (name2 != null)
+                    return CropAndReplace(name2);
+            }
+
+            return null;
+
+            string CropAndReplace(string name)
+            {
+                int length = name.LastIndexOf('`');
+                name = length == -1 ? name : name.Substring(0, length);
+                return name.Replace('+', '.');
+            }
+        }
+
         void ReplaceType(AstType type)
         {
-            int length = type.EndLocation.Column - type.StartLocation.Column;
-            int offset = type.StartLocation.Column - 1;
+            int length = GetOffsetByTextLocation(type.EndLocation) - GetOffsetByTextLocation(type.StartLocation);
+            int offsetByTextLocation = GetOffsetByTextLocation(type.StartLocation);
+            ReplaceType(type.ToCSharpFormat(), 0, offsetByTextLocation, length);
+        }
 
-            ReplaceType(type.ToString(), 0, offset, length);
+        int GetOffsetByTextLocation(TextLocation textLocation)
+        {
+            int index = textLocation.Line - 1;
+            if (index >= lineStartOffsets.Count)
+                throw new ArgumentException($"Text Location is out of expression range, get line {index}, max line {lineStartOffsets.Count - 1}");
+            return lineStartOffsets[index] + textLocation.Column - 1;
         }
 
         public override void VisitIdentifierExpression(IdentifierExpression identifierExpression)

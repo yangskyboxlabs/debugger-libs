@@ -85,7 +85,10 @@ namespace Mono.Debugger.Soft
          * Construct a normal object from the value, so accessing the cattr doesn't 
          * require remoting calls.
          */
-        static CustomAttributeTypedArgumentMirror CreateArg(VirtualMachine vm, ValueImpl vi)
+        static CustomAttributeTypedArgumentMirror CreateArg(
+            VirtualMachine vm,
+            ValueImpl vi,
+            AppDomainMirror callingDomain)
         {
             object val;
 
@@ -94,7 +97,7 @@ namespace Mono.Debugger.Soft
                 val = vm.GetType(vi.Id);
             else
             {
-                Value v = vm.DecodeValue(vi);
+                Value v = vm.DecodeValue(vi, callingDomain);
                 if (v is PrimitiveValue)
                     val = (v as PrimitiveValue).Value;
                 else if (v is StringMirror)
@@ -117,14 +120,14 @@ namespace Mono.Debugger.Soft
                 MethodMirror ctor = vm.GetMethod(attr.ctor_id);
                 var ctor_args = new object [attr.ctor_args.Length];
                 for (int j = 0; j < ctor_args.Length; ++j)
-                    ctor_args[j] = CreateArg(vm, attr.ctor_args[j]);
+                    ctor_args[j] = CreateArg(vm, attr.ctor_args[j], ctor.DeclaringType.Assembly.Domain);
                 var named_args = new object [attr.named_args.Length];
                 for (int j = 0; j < named_args.Length; ++j)
                 {
                     CattrNamedArgInfo arg = attr.named_args[j];
                     CustomAttributeTypedArgumentMirror val;
 
-                    val = CreateArg(vm, arg.value);
+                    val = CreateArg(vm, arg.value, ctor.DeclaringType.Assembly.Domain);
 
                     TypeMirror t = ctor.DeclaringType;
                     while (named_args[j] == null && t != null)

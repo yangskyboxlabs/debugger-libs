@@ -31,50 +31,51 @@ using Mono.Debugging.Evaluation;
 
 namespace Mono.Debugging.Soft
 {
-    public class VariableValueReference : ValueReference
+    public class VariableValueReference : ValueReference<TypeMirror, Value>
     {
         readonly LocalVariable variable;
         LocalVariableBatch batch;
         Value value;
         string name;
 
-        public VariableValueReference(EvaluationContext ctx, string name, LocalVariable variable, LocalVariableBatch batch)
-            : base(ctx)
+        public VariableValueReference(
+            SoftDebuggerAdaptor adapter,
+            EvaluationContext ctx,
+            string name,
+            LocalVariable variable,
+            LocalVariableBatch batch)
+            : this(adapter, ctx, name, variable)
         {
-            this.variable = variable;
             this.batch = batch;
-            this.name = name;
         }
 
-        public VariableValueReference(EvaluationContext ctx, string name, LocalVariable variable, Value value)
-            : base(ctx)
+        public VariableValueReference(
+            SoftDebuggerAdaptor adapter,
+            EvaluationContext ctx,
+            string name,
+            LocalVariable variable,
+            Value value)
+            : this(adapter, ctx, name, variable)
         {
-            this.variable = variable;
             this.value = value;
-            this.name = name;
         }
 
-        public VariableValueReference(EvaluationContext ctx, string name, LocalVariable variable)
-            : base(ctx)
+        public VariableValueReference(
+            SoftDebuggerAdaptor adapter,
+            EvaluationContext ctx,
+            string name,
+            LocalVariable variable)
+            : base(adapter, ctx)
         {
             this.variable = variable;
             this.name = name;
         }
 
-        public override ObjectValueFlags Flags
-        {
-            get { return ObjectValueFlags.Variable; }
-        }
+        public override ObjectValueFlags Flags => ObjectValueFlags.Variable;
 
-        public override string Name
-        {
-            get { return name; }
-        }
+        public override string Name => name;
 
-        public override object Type
-        {
-            get { return variable.Type; }
-        }
+        public override TypeMirror Type => variable.Type;
 
         Value NormalizeValue(EvaluationContext ctx, Value value)
         {
@@ -85,10 +86,10 @@ namespace Mono.Debugging.Soft
                 return new PointerValue(value.VirtualMachine, variable.Type, addr);
             }
 
-            return ctx.Adapter.IsNull(ctx, value) ? null : value;
+            return Adaptor.IsNull(ctx, value) ? null : value;
         }
 
-        public override object Value
+        public override Value Value
         {
             get
             {
@@ -112,8 +113,8 @@ namespace Mono.Debugging.Soft
             }
             set
             {
-                ((SoftEvaluationContext)Context).Frame.SetValue(variable, (Value)value);
-                this.value = (Value)value;
+                ((SoftEvaluationContext)Context).Frame.SetValue(variable, value);
+                this.value = value;
             }
         }
 

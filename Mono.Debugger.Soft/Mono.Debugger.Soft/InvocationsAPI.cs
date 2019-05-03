@@ -194,7 +194,7 @@ namespace Mono.Debugger.Soft
 
             InvokeAsyncResult r = new InvokeAsyncResult { AsyncState = state, AsyncWaitHandle = new ManualResetEvent(false), VM = vm, Thread = thread, Callback = callback };
             thread.InvalidateFrames();
-            r.ID = vm.conn.VM_BeginInvokeMethod(thread.Id, method.Id, this_obj != null ? vm.EncodeValue(this_obj) : vm.EncodeValue(vm.CreateValue(null)), vm.EncodeValues(arguments), f, InvokeCB, r);
+            r.ID = vm.conn.VM_BeginInvokeMethod(thread.Id, method.Id, this_obj != null ? vm.EncodeValue(this_obj) : vm.EncodeValue(vm.CreateValue(null, thread.Domain)), vm.EncodeValues(arguments), f, InvokeCB, r);
 
             return r;
         }
@@ -260,16 +260,16 @@ namespace Mono.Debugger.Soft
             else
             {
                 if (r.Exception != null)
-                    throw new InvocationException((ObjectMirror)r.VM.DecodeValue(r.Exception));
+                    throw new InvocationException((ObjectMirror)r.VM.DecodeValue(r.Exception, r.Thread.Domain));
 
                 Value out_this = null;
                 if (r.OutThis != null)
-                    out_this = r.VM.DecodeValue(r.OutThis);
+                    out_this = r.VM.DecodeValue(r.OutThis, r.Thread.Domain);
                 Value[] out_args = null;
                 if (r.OutArgs != null)
-                    out_args = r.VM.DecodeValues(r.OutArgs);
+                    out_args = r.VM.DecodeValues(r.OutArgs, r.Thread.Domain);
 
-                return new InvokeResult() { Result = r.VM.DecodeValue(r.Value), OutThis = out_this, OutArgs = out_args };
+                return new InvokeResult() { Result = r.VM.DecodeValue(r.Value, r.Thread.Domain), OutThis = out_this, OutArgs = out_args };
             }
         }
 
@@ -344,7 +344,7 @@ namespace Mono.Debugger.Soft
             for (int i = 0; i < methods.Length; ++i)
                 args.Add(vm.EncodeValues(arguments[i]));
             thread.InvalidateFrames();
-            r.ID = vm.conn.VM_BeginInvokeMethods(thread.Id, mids, this_obj != null ? vm.EncodeValue(this_obj) : vm.EncodeValue(vm.CreateValue(null)), args, f, InvokeMultipleCB, r);
+            r.ID = vm.conn.VM_BeginInvokeMethods(thread.Id, mids, this_obj != null ? vm.EncodeValue(this_obj) : vm.EncodeValue(vm.CreateValue(null, thread.Domain)), args, f, InvokeMultipleCB, r);
 
             return r;
         }

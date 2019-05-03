@@ -75,6 +75,7 @@ namespace Mono.Debugging.Client
         public int EvaluationTimeout { get; set; }
         public int MemberEvaluationTimeout { get; set; }
         public bool AllowTargetInvoke { get; set; }
+        public bool AllowLambdaEvaluation { get; set; }
 
         public bool AllowMethodEvaluation
         {
@@ -110,9 +111,34 @@ namespace Mono.Debugging.Client
 
         public string CurrentExceptionTag { get; set; }
 
+        public string UserObjectIdPrefix { get; }
+
         public bool IEnumerable { get; set; }
 
         public StackFrameFormat StackFrameFormat { get; set; }
+
+        public string[] NamespaceImports { get; }
+
+        public EvaluationOptions CloneWith(Action<EvaluationOptions> action)
+        {
+            return MutableCloneWith(action);
+        }
+
+        public EvaluationOptions MutableCloneWith(
+            Action<EvaluationOptions> action)
+        {
+            EvaluationOptions mutableClone = GetMutableClone();
+            if (action != null)
+                action(mutableClone);
+            return mutableClone;
+        }
+
+        public EvaluationOptions GetMutableClone()
+        {
+            var evaluationOptions = (EvaluationOptions)MemberwiseClone();
+            evaluationOptions.StackFrameFormat = new StackFrameFormat(StackFrameFormat);
+            return evaluationOptions;
+        }
     }
 
     public class StackFrameFormat

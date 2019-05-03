@@ -14,27 +14,36 @@ namespace Mono.Debugging.Evaluation
     //   identifer.
     // - Collect variable references for outside the lambda
     //   (local variables/properties...)
-    public class LambdaBodyOutputVisitor : CSharpOutputVisitor
+    public class LambdaBodyOutputVisitor<TType, TValue> : CSharpOutputVisitor
+        where TType : class
+        where TValue : class
     {
-        readonly Dictionary<string, ValueReference> userVariables;
+        readonly Dictionary<string, ValueReference<TType, TValue>> userVariables;
         readonly EvaluationContext ctx;
 
-        Dictionary<string, Tuple<string, object>> localValues;
+        Dictionary<string, Tuple<string, TValue>> localValues;
         List<string> definedIdentifier;
         int gensymCount;
 
-        public LambdaBodyOutputVisitor(EvaluationContext ctx, Dictionary<string, ValueReference> userVariables, TextWriter writer)
+        public LambdaBodyOutputVisitor(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx,
+            Dictionary<string, ValueReference<TType, TValue>> userVariables,
+            TextWriter writer)
             : base(writer, FormattingOptionsFactory.CreateMono())
         {
+            Adaptor = adaptor;
             this.ctx = ctx;
             this.userVariables = userVariables;
-            this.localValues = new Dictionary<string, Tuple<string, object>>();
+            this.localValues = new Dictionary<string, Tuple<string, TValue>>();
             this.definedIdentifier = new List<string>();
         }
 
-        public Tuple<string, object>[] GetLocalValues()
+        public ObjectValueAdaptor<TType, TValue> Adaptor { get; }
+
+        public Tuple<string, TValue>[] GetLocalValues()
         {
-            var locals = new Tuple<string, object>[localValues.Count];
+            var locals = new Tuple<string, TValue>[localValues.Count];
             int n = 0;
             foreach (var localv in localValues.Values)
             {
@@ -69,18 +78,18 @@ namespace Mono.Debugging.Evaluation
             return !(isField || isProperty) || isPublic;
         }
 
-        void AssertPublicType(object type)
+        void AssertPublicType(TType type)
         {
-            if (!ctx.Adapter.IsPublic(ctx, type))
+            if (!Adaptor.IsPublic(ctx, type))
             {
-                var typeName = ctx.Adapter.GetDisplayTypeName(ctx, type);
+                var typeName = Adaptor.GetDisplayTypeName(ctx, type);
                 throw EvaluationError("Not Support to reference non-public type: `{0}'", typeName);
             }
         }
 
-        void AssertPublicValueReference(ValueReference vr)
+        void AssertPublicValueReference(ValueReference<TType, TValue> vr)
         {
-            if (!(vr is NamespaceValueReference))
+            if (!(vr is NamespaceValueReference<TType, TValue>))
             {
                 var typ = vr.Type;
                 AssertPublicType(typ);
@@ -92,22 +101,22 @@ namespace Mono.Debugging.Evaluation
             }
         }
 
-        ValueReference Evaluate(IdentifierExpression t)
+        ValueReference<TType, TValue> Evaluate(IdentifierExpression t)
         {
-            var visitor = new NRefactoryExpressionEvaluatorVisitor(ctx, t.Identifier, null, userVariables);
-            return t.AcceptVisitor<ValueReference>(visitor);
+            var visitor = new NRefactoryExpressionEvaluatorVisitor<TType, TValue>(ctx, t.Identifier, null, userVariables);
+            return t.AcceptVisitor(visitor);
         }
 
-        ValueReference Evaluate(BaseReferenceExpression t)
+        ValueReference<TType, TValue> Evaluate(BaseReferenceExpression t)
         {
-            var visitor = new NRefactoryExpressionEvaluatorVisitor(ctx, "base", null, userVariables);
-            return t.AcceptVisitor<ValueReference>(visitor);
+            var visitor = new NRefactoryExpressionEvaluatorVisitor<TType, TValue>(ctx, "base", null, userVariables);
+            return t.AcceptVisitor(visitor);
         }
 
-        ValueReference Evaluate(ThisReferenceExpression t)
+        ValueReference<TType, TValue> Evaluate(ThisReferenceExpression t)
         {
-            var visitor = new NRefactoryExpressionEvaluatorVisitor(ctx, "this", null, userVariables);
-            return t.AcceptVisitor<ValueReference>(visitor);
+            var visitor = new NRefactoryExpressionEvaluatorVisitor<TType, TValue>(ctx, "this", null, userVariables);
+            return t.AcceptVisitor(visitor);
         }
 
         string GenerateSymbol(string s)
@@ -122,7 +131,7 @@ namespace Mono.Debugging.Evaluation
             return sym;
         }
 
-        string AddToLocals(string name, ValueReference vr, bool shouldRename = false)
+        string AddToLocals(string name, ValueReference<TType, TValue> vr, bool shouldRename = false)
         {
             if (localValues.ContainsKey(name))
                 return GetLocalName(name);
@@ -151,7 +160,7 @@ namespace Mono.Debugging.Evaluation
 
         string GetLocalName(string name)
         {
-            Tuple<string, object> pair;
+            Tuple<string, TValue> pair;
             if (localValues.TryGetValue(name, out pair))
                 return pair.Item1;
             return null;
@@ -288,14 +297,14 @@ namespace Mono.Debugging.Evaluation
             var argc = invocationExpression.Arguments.Count;
             var method = (IdentifierExpression)invocationTarget;
             var methodName = method.Identifier;
-            var vref = ctx.Adapter.GetThisReference(ctx);
-            var vtype = ctx.Adapter.GetEnclosingType(ctx);
+            var vref = Adaptor.GetThisReference(ctx);
+            var vtype = Adaptor.GetEnclosingType(ctx);
             string accessor = null;
 
-            var hasInstanceMethod = ctx.Adapter.HasMethodWithParamLength(ctx, vtype, methodName, BindingFlags.Instance, argc);
-            var hasStaticMethod = ctx.Adapter.HasMethodWithParamLength(ctx, vtype, methodName, BindingFlags.Static, argc);
+            var hasInstanceMethod = Adaptor.HasMethodWithParamLength(ctx, vtype, methodName, BindingFlags.Instance, argc);
+            var hasStaticMethod = Adaptor.HasMethodWithParamLength(ctx, vtype, methodName, BindingFlags.Static, argc);
             var publicFlags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static;
-            var hasPublicMethod = ctx.Adapter.HasMethodWithParamLength(ctx, vtype, methodName, publicFlags, argc);
+            var hasPublicMethod = Adaptor.HasMethodWithParamLength(ctx, vtype, methodName, publicFlags, argc);
 
             if ((hasInstanceMethod || hasStaticMethod) && !hasPublicMethod)
                 throw EvaluationError("Only support public method invocation inside lambda");
@@ -303,8 +312,8 @@ namespace Mono.Debugging.Evaluation
             if (vref == null && hasStaticMethod)
             {
                 AssertPublicType(vtype);
-                var typeName = ctx.Adapter.GetTypeName(ctx, vtype);
-                accessor = ctx.Adapter.GetDisplayTypeName(typeName);
+                var typeName = Adaptor.GetTypeName(ctx, vtype);
+                accessor = Adaptor.GetDisplayTypeName(typeName);
             }
             else if (vref != null)
             {
@@ -324,8 +333,8 @@ namespace Mono.Debugging.Evaluation
                 }
                 else if (hasStaticMethod)
                 {
-                    var typeName = ctx.Adapter.GetTypeName(ctx, vtype);
-                    accessor = ctx.Adapter.GetDisplayTypeName(typeName);
+                    var typeName = Adaptor.GetTypeName(ctx, vtype);
+                    accessor = Adaptor.GetDisplayTypeName(typeName);
                 }
             }
 

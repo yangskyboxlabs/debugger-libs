@@ -19,15 +19,9 @@ namespace Mono.Debugger.Soft
             this.fields = fields;
         }
 
-        public TypeMirror Type
-        {
-            get { return type; }
-        }
+        public override TypeMirror Type => type;
 
-        public Value[] Fields
-        {
-            get { return fields; }
-        }
+        public Value[] Fields => fields;
 
         public Value this[String field]
         {

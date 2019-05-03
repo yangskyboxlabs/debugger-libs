@@ -31,29 +31,28 @@ using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
-    public class BaseTypeViewSource : RemoteFrameObject, IObjectValueSource
+    public class BaseTypeViewSource<TType, TValue> : RemoteFrameObject, IObjectValueSource
+        where TType : class
+        where TValue : class
     {
+        ObjectValueAdaptor<TType, TValue> adaptor;
         EvaluationContext ctx;
-        object type;
-        object obj;
-        IObjectSource objectSource;
+        TType type;
+        TValue obj;
+        IObjectSource<TValue> objectSource;
 
-        public BaseTypeViewSource(EvaluationContext ctx, IObjectSource objectSource, object type, object obj)
+        public BaseTypeViewSource(
+            ObjectValueAdaptor<TType, TValue> adaptor,
+            EvaluationContext ctx,
+            IObjectSource<TValue> objectSource,
+            TType type,
+            TValue obj)
         {
+            this.adaptor = adaptor;
             this.ctx = ctx;
             this.type = type;
             this.obj = obj;
             this.objectSource = objectSource;
-        }
-
-        public static ObjectValue CreateBaseTypeView(EvaluationContext ctx, IObjectSource objectSource, object type, object obj)
-        {
-            BaseTypeViewSource src = new BaseTypeViewSource(ctx, objectSource, type, obj);
-            src.Connect();
-            string tname = ctx.Adapter.GetDisplayTypeName(ctx, type);
-            ObjectValue val = ObjectValue.CreateObject(src, new ObjectPath("base"), tname, "{" + tname + "}", ObjectValueFlags.Type | ObjectValueFlags.ReadOnly | ObjectValueFlags.NoRefresh, null);
-            val.ChildSelector = "";
-            return val;
         }
 
         #region IObjectValueSource implementation
@@ -61,7 +60,7 @@ namespace Mono.Debugging.Evaluation
         public ObjectValue[] GetChildren(ObjectPath path, int index, int count, EvaluationOptions options)
         {
             EvaluationContext cctx = ctx.WithOptions(options);
-            return cctx.Adapter.GetObjectValueChildren(cctx, objectSource, type, obj, index, count, false);
+            return adaptor.GetObjectValueChildren(cctx, objectSource, type, obj, index, count, false);
         }
 
         public EvaluationResult SetValue(ObjectPath path, string value, EvaluationOptions options)
@@ -74,16 +73,31 @@ namespace Mono.Debugging.Evaluation
             throw new NotSupportedException();
         }
 
-        public object GetRawValue(ObjectPath path, EvaluationOptions options)
+        public IRawValue GetRawValue(ObjectPath path, EvaluationOptions options)
         {
             throw new NotImplementedException();
         }
 
-        public void SetRawValue(ObjectPath path, object value, EvaluationOptions options)
+        public void SetRawValue(ObjectPath path, IRawValue value, EvaluationOptions options)
         {
             throw new NotImplementedException();
         }
 
         #endregion
+    }
+
+    public static class BaseTypeViewSource
+    {
+        public static ObjectValue CreateBaseTypeView<TType, TValue>(ObjectValueAdaptor<TType, TValue> adaptor, EvaluationContext ctx, IObjectSource<TValue> objectSource, TType type, TValue obj)
+            where TType : class
+            where TValue : class
+        {
+            BaseTypeViewSource<TType, TValue> src = new BaseTypeViewSource<TType, TValue>(adaptor, ctx, objectSource, type, obj);
+            src.Connect();
+            string tname = adaptor.GetDisplayTypeName(ctx, type);
+            ObjectValue val = ObjectValue.CreateObject(src, new ObjectPath("base"), tname, "{" + tname + "}", ObjectValueFlags.Type | ObjectValueFlags.ReadOnly | ObjectValueFlags.NoRefresh, null);
+            val.ChildSelector = "";
+            return val;
+        }
     }
 }

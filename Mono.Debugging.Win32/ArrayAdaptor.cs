@@ -28,73 +28,83 @@
 using System;
 using System.Collections;
 using Microsoft.Samples.Debugging.CorDebug;
+using Microsoft.Samples.Debugging.CorDebug.NativeApi;
 using Mono.Debugging.Evaluation;
 
 namespace Mono.Debugging.Win32
 {
-	class ArrayAdaptor: ICollectionAdaptor
+	class ArrayAdaptor : ICollectionAdaptor<ICorDebugType, ICorValue>
 	{
 		readonly CorEvaluationContext ctx;
 		readonly CorValRef<CorArrayValue> valRef;
+		readonly ICorValue arrayObject;
 
-		public ArrayAdaptor (EvaluationContext ctx, CorValRef<CorArrayValue> valRef)
+		public ArrayAdaptor(EvaluationContext ctx, CorValRef<CorArrayValue> valRef)
 		{
-			this.ctx = (CorEvaluationContext) ctx;
+			this.ctx = (CorEvaluationContext)ctx;
 			this.valRef = valRef;
 		}
 
-		public int[] GetLowerBounds ()
+		public int[] GetLowerBounds()
 		{
 			var array = valRef.Val;
-			if (array != null && array.HasBaseIndicies) {
-				return array.GetBaseIndicies ();
-			} else {
-				return new int[GetDimensions ().Length];
+			if (array != null && array.HasBaseIndicies)
+			{
+				return array.GetBaseIndicies();
+			}
+			else
+			{
+				return new int[GetDimensions().Length];
 			}
 		}
-		
-		public int[] GetDimensions ()
+
+		public int[] GetDimensions()
 		{
 			var array = valRef.Val;
-			return array != null ? array.GetDimensions () : new int[0];
-		}
-		
-		public object GetElement (int[] indices)
-		{
-			return new CorValRef (delegate {
-				var array = valRef.Val;
-				return array != null ? array.GetElement (indices) : null;
-			});
+			return array != null ? array.GetDimensions() : new int[0];
 		}
 
-		public Array GetElements (int[] indices, int count)
+		public ICorValue GetElement(int[] indices)
+		{
+			if (indices == null)
+				throw new ArgumentNullException(nameof(indices));
+
+			return CorValue.Create(() => UnwrapArray().GetElement(indices));
+		}
+
+		public ICorValue[] GetElements(int[] indices, int count)
 		{
 			// FIXME: the point of this method is to be more efficient than getting 1 array element at a time...
-			var elements = new ArrayList ();
+			var elements = new ArrayList();
 
 			int[] idx = new int[indices.Length];
 			for (int i = 0; i < indices.Length; i++)
 				idx[i] = indices[i];
 
-			for (int i = 0; i < count; i++) {
-				elements.Add (GetElement ((int[])idx.Clone ()));
+			for (int i = 0; i < count; i++)
+			{
+				elements.Add(GetElement((int[])idx.Clone()));
 				idx[idx.Length - 1]++;
 			}
 
-			return elements.ToArray ();
+			return elements.ToArray();
 		}
-		
-		public void SetElement (int[] indices, object val)
+
+		public void SetElement(int[] indices, object val)
 		{
-			CorValRef it = (CorValRef) GetElement (indices);
-			valRef.Invalidate ();
-			it.SetValue (ctx, (CorValRef) val);
+			CorValRef it = (CorValRef)GetElement(indices);
+			valRef.Invalidate();
+			it.SetValue(ctx, (CorValRef)val);
 		}
-		
-		public object ElementType {
-			get {
-				return valRef.Val.ExactType.FirstTypeParameter;
-			}
+
+		public ICorDebugType ElementType
+		{
+			get { return valRef.Val.ExactType.FirstTypeParameter; }
+		}
+
+		ICorDebugArrayValue UnwrapArray()
+		{
+			return this.arrayObject.Value.GetRealObject<ICorDebugArrayValue>(this.ctx, true);
 		}
 	}
 }

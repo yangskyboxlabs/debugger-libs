@@ -39,22 +39,11 @@ namespace Mono.Debugging.Client
         Backtrace backtrace;
 
         [NonSerialized]
-        DebuggerSession session;
+        IDebuggerSession session;
 
-        internal void Attach(DebuggerSession session)
-        {
-            this.session = session;
-        }
+        public long Id => id;
 
-        public long Id
-        {
-            get { return id; }
-        }
-
-        public string Name
-        {
-            get { return name; }
-        }
+        public string Name => name;
 
         public string Location
         {
@@ -71,17 +60,14 @@ namespace Mono.Debugging.Client
             }
         }
 
-        internal long ProcessId
-        {
-            get { return processId; }
-        }
+        internal long ProcessId => processId;
 
         public Backtrace Backtrace
         {
             get
             {
                 if (backtrace == null)
-                    backtrace = session.GetBacktrace(processId, id);
+                    backtrace = session.GetBacktrace(id);
                 return backtrace;
             }
         }
@@ -91,16 +77,16 @@ namespace Mono.Debugging.Client
             session.ActiveThread = this;
         }
 
-        public ThreadInfo(long processId, long id, string name, string location)
-            : this(processId, id, name, location, null) { }
+        public ThreadInfo(long id, string name, string location, IDebuggerSession session)
+            : this(id, name, location, null, session) { }
 
-        public ThreadInfo(long processId, long id, string name, string location, Backtrace backtrace)
+        public ThreadInfo(long id, string name, string location, Backtrace backtrace, IDebuggerSession session)
         {
             this.id = id;
             this.name = name;
-            this.processId = processId;
             this.location = location;
             this.backtrace = backtrace;
+            this.session = session;
         }
 
         public override bool Equals(object obj)
