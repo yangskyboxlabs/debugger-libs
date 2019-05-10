@@ -317,27 +317,17 @@ namespace Mono.Debugging.Client
                                 {
                                     if (actionsQueue.Count > 0)
                                     {
-                                        actionToExecute = actionsQueue.Peek();
+                                        actionToExecute = actionsQueue.Dequeue();
                                     }
                                     else
                                     {
                                         return;
                                     }
                                 }
-
-                                try
+                                
+                                lock (slock)
                                 {
-                                    lock (slock)
-                                    {
-                                        actionToExecute();
-                                    }
-                                }
-                                finally
-                                {
-                                    lock (actionsQueue)
-                                    {
-                                        actionsQueue.Dequeue();
-                                    }
+                                    actionToExecute();
                                 }
                             }
                         });
