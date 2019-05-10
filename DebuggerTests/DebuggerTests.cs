@@ -28,21 +28,6 @@ namespace DebuggerTests
         public static string runtime = Environment.GetEnvironmentVariable("DBG_RUNTIME");
         public static string agent_args = Environment.GetEnvironmentVariable("DBG_AGENT_ARGS");
 
-        string m_MonoPath = "";
-
-        [OneTimeSetUp]
-        public void Initialize()
-        {
-            m_MonoPath = Environment.GetEnvironmentVariable("MONO_PATH");
-            Environment.SetEnvironmentVariable("MONO_PATH", @"C:\projects\mono\mono\build\builds\monodistribution\lib\mono\4.5");
-        }
-
-        [OneTimeTearDown]
-        public void Finalizer()
-        {
-            Environment.SetEnvironmentVariable("MONO_PATH", m_MonoPath);
-        }
-
         protected void Start(params string[] args)
         {
             Start(false, args);
