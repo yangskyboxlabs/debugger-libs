@@ -31,6 +31,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Mono.Debugging.Backend;
 using Mono.Debugging.Client.Breakpoints;
+using Mono.Debugging.Client.Events;
 using Mono.Debugging.Evaluation;
 
 namespace Mono.Debugging.Client
@@ -136,27 +137,31 @@ namespace Mono.Debugging.Client
         /// Raised when an assembly is loaded
         /// </summary>
         public event EventHandler<AssemblyEventArgs> AssemblyLoaded;
+        
+        /// <summary>
+        /// Raised when module is loaded
+        /// </summary>
+        public event EventHandler<ModuleLoadedEventArgs> ModuleLoaded;
 
         public IExpressionEvaluators<TType, TValue> Evaluators()
         {
             return m_Evaluators;
         }
 
-        protected DebuggerSession(IExpressionEvaluators<TType, TValue> evaluators)
+        protected DebuggerSession()
         {
-            m_Evaluators = evaluators;
             UseOperationThread = true;
         }
 
         /// <summary>
-        /// Releases all resource used by the <see cref="Mono.Debugging.Client.DebuggerSession"/> object.
+        /// Releases all resource used by the <see cref="DebuggerSession{TType,TValue}"/> object.
         /// </summary>
         /// <remarks>
-        /// Call <see cref="Dispose"/> when you are finished using the <see cref="Mono.Debugging.Client.DebuggerSession"/>.
-        /// The <see cref="Dispose"/> method leaves the <see cref="Mono.Debugging.Client.DebuggerSession"/> in an unusable
+        /// Call <see cref="Dispose"/> when you are finished using the <see cref="DebuggerSession{TType,TValue}"/>.
+        /// The <see cref="Dispose"/> method leaves the <see cref="DebuggerSession{TType,TValue}"/> in an unusable
         /// state. After calling <see cref="Dispose"/>, you must release all references to the
-        /// <see cref="Mono.Debugging.Client.DebuggerSession"/> so the garbage collector can reclaim the memory that the
-        /// <see cref="Mono.Debugging.Client.DebuggerSession"/> was occupying.
+        /// <see cref="DebuggerSession{TType,TValue}"/> so the garbage collector can reclaim the memory that the
+        /// <see cref="DebuggerSession{TType,TValue}"/> was occupying.
         /// </remarks>
         public virtual void Dispose()
         {
@@ -277,7 +282,7 @@ namespace Mono.Debugging.Client
 //        }
 
         readonly Queue<Action> actionsQueue = new Queue<Action>();
-        IExpressionEvaluators<TType, TValue> m_Evaluators;
+        readonly IExpressionEvaluators<TType, TValue> m_Evaluators = new ExpressionEvaluators<TType, TValue>();
 
         void Dispatch(Action action)
         {
@@ -443,7 +448,7 @@ namespace Mono.Debugging.Client
         }
 
         /// <summary>
-        /// Gets a value indicating whether this <see cref="Mono.Debugging.Client.DebuggerSession"/> has been attached to a process using the Attach method.
+        /// Gets a value indicating whether this <see cref="DebuggerSession{TType,TValue}"/> has been attached to a process using the Attach method.
         /// </summary>
         /// <value>
         /// <c>true</c> if attached to process; otherwise, <c>false</c>.
@@ -1675,6 +1680,21 @@ namespace Mono.Debugging.Client
         public void FetchFrames(ThreadInfo[] threads)
         {
             OnFetchFrames(threads);
+        }
+        
+        public virtual void RaiseModuleLoaded(ModuleLoadedEventArgs e)
+        {
+            EventHandler<ModuleLoadedEventArgs> moduleLoaded = this.ModuleLoaded;
+            if (moduleLoaded == null)
+                return;
+            try
+            {
+                moduleLoaded(this, e);
+            }
+            catch (Exception ex)
+            {
+                DebuggerLoggingService.LogError("", ex);
+            }
         }
     }
 

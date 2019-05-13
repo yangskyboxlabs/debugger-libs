@@ -61,11 +61,21 @@ namespace Mono.Debugging.Client
             else
                 LogError(message, ex);
         }
+
+        public static void LogError(string message)
+        {
+            if (CustomLogger != null)
+                CustomLogger.LogError(message);
+            else
+                Console.WriteLine(message);
+        }
     }
 
     public interface ICustomLogger
     {
         void LogError(string message, System.Exception ex);
+        void LogError(string message);
+
         void LogAndShowException(string message, System.Exception ex);
         void LogMessage(string messageFormat, params object[] args);
 

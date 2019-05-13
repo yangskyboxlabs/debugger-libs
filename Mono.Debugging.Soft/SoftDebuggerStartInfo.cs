@@ -201,7 +201,7 @@ namespace Mono.Debugging.Soft
         /// <summary>
         /// Launcher for the external console. May be null if the app does not run on an external console.
         /// </summary>
-        public Mono.Debugger.Soft.LaunchOptions.TargetProcessLauncher ExternalConsoleLauncher { get; set; }
+        public LaunchOptions.TargetProcessLauncher ExternalConsoleLauncher { get; set; }
 
         /// <summary>
         /// Gets or sets the name of the mono executable file. e.g. "mono", "mono32", "mono64"...

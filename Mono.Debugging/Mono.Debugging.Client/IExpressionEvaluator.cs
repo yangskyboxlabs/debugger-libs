@@ -33,7 +33,14 @@ namespace Mono.Debugging.Client
         where TType : class
         where TValue : class
     {
+        bool IsApplicable(EvaluationContext context);
         ExpressionEvaluator<TType, TValue> Evaluator { get; }
         ObjectValue[] GetLocals(StackFrame sf);
+        
+        
+        ValueReference<TType, TValue> Evaluate(
+            EvaluationContext ctx,
+            string exp,
+            TType expectedType);
     }
 }

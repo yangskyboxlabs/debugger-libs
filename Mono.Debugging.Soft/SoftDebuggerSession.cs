@@ -42,9 +42,12 @@ using System.Threading;
 using Mono.Cecil.Cil;
 using Mono.CompilerServices.SymbolWriter;
 using Mono.Debugging.Client;
+using Mono.Debugging.Client.Events;
 using Mono.Debugging.Evaluation;
 using Mono.Debugging.Mono.Debugging.Utils;
 using Mono.Debugging.Soft.Breakpoints;
+using Mono.Debugging.Soft.util;
+using Util.Concurrency;
 using MDB = Mono.Debugger.Soft;
 
 namespace Mono.Debugging.Soft
@@ -85,7 +88,7 @@ namespace Mono.Debugging.Soft
         readonly Dictionary<string, long> symbolFilesTimestamps = new Dictionary<string, long>();
         readonly Dictionary<string, List<MDB.TypeMirror>> aliases = new Dictionary<string, List<MDB.TypeMirror>>();
         readonly Dictionary<string, List<MDB.TypeMirror>> types = new Dictionary<string, List<MDB.TypeMirror>>();
-        readonly LinkedList<List<MDB.Event>> queuedEventSets = new LinkedList<List<MDB.Event>>();
+        readonly List<MDB.Event> queuedEvents = new List<MDB.Event>();
         readonly Dictionary<long, long> localThreadIds = new Dictionary<long, long>();
         readonly List<BreakInfo> pending_bes = new List<BreakInfo>();
         MDB.TypeLoadEventRequest typeLoadReq, typeLoadTypeNameReq;
@@ -114,18 +117,14 @@ namespace Mono.Debugging.Soft
 
         internal int StackVersion;
 
-        public SoftDebuggerAdaptor Adaptor { get; private set; }
+        public SoftDebuggerAdaptor Adaptor
+        {
+            get { return (SoftDebuggerAdaptor) base.Adapter; }
+        }
 
         public SoftDebuggerSession()
         {
-            Adaptor = CreateSoftDebuggerAdaptor();
-            Adaptor.BusyStateChanged += (sender, e) => SetBusyState(e);
-            Adaptor.DebuggerSession = this;
-        }
-
-        protected virtual SoftDebuggerAdaptor CreateSoftDebuggerAdaptor()
-        {
-            return new SoftDebuggerAdaptor();
+            MDB.ThreadMirror.NativeTransitions = true;
         }
 
         public SoftDebuggerBreakpointsManager BreakpointsManager
@@ -967,11 +966,11 @@ namespace Mono.Debugging.Soft
             return null;
         }
 
-        ThreadInfo GetThread(ProcessInfo process, MDB.ThreadMirror thread)
+        ThreadInfo GetThread(MDB.ThreadMirror thread)
         {
             long id = GetId(thread);
 
-            foreach (var threadInfo in OnGetThreads(process.Id))
+            foreach (var threadInfo in OnGetThreads())
             {
                 if (threadInfo.Id == id)
                     return threadInfo;
@@ -1043,150 +1042,150 @@ namespace Mono.Debugging.Soft
             }
         }
 
-        protected override BreakEventInfo OnInsertBreakEvent(BreakEvent breakEvent)
-        {
-            var bi = new BreakInfo();
-
-            if (HasExited)
-            {
-                bi.SetStatus(BreakEventStatus.Disconnected, null);
-                return bi;
-            }
-
-            if (breakEvent is FunctionBreakpoint)
-            {
-                var fb = (FunctionBreakpoint)breakEvent;
-
-                foreach (var method in FindMethodsByName(fb.FunctionName, fb.ParamTypes))
-                {
-                    if (!ResolveFunctionBreakpoint(bi, fb, method))
-                    {
-                        bi.SetStatus(BreakEventStatus.NotBound, null);
-                    }
-                }
-
-                // TODO: handle types like GenericType<>, GenericType<SomeOtherType>, and GenericType<...>+NestedGenricType<...>
-                var bracket = fb.FunctionName.IndexOf('(');
-                int dot;
-                if (bracket != -1)
-                {
-                    //Handle stuff like SomeNamespace.SomeType.Method(SomeOtherNamespace.SomeOtherType)
-                    dot = fb.FunctionName.LastIndexOf('.', bracket);
-                }
-                else
-                {
-                    dot = fb.FunctionName.LastIndexOf('.');
-                }
-
-                if (dot != -1)
-                    bi.TypeName = fb.FunctionName.Substring(0, dot);
-
-                bi.SetStatus(BreakEventStatus.NotBound, null);
-                lock (pending_bes)
-                {
-                    pending_bes.Add(bi);
-                }
-            }
-            else if (breakEvent is InstructionBreakpoint)
-            {
-                var bp = (InstructionBreakpoint)breakEvent;
-
-                var insideTypeRange = true;
-                bool generic;
-
-                bi.FileName = bp.FileName;
-
-                MDB.Location location;
-                if ((location = FindLocationByILOffset(bp, bp.FileName, out generic, out insideTypeRange)) != null)
-                {
-                    bi.Location = location;
-                    InsertBreakpoint(bp, bi);
-                    bi.SetStatus(BreakEventStatus.Bound, null);
-                }
-                else if (insideTypeRange)
-                {
-                    bi.SetStatus(BreakEventStatus.Invalid, null);
-                }
-                else
-                {
-                    bi.SetStatus(BreakEventStatus.NotBound, null);
-                }
-
-                lock (pending_bes)
-                {
-                    pending_bes.Add(bi);
-                }
-            }
-            else if (breakEvent is Breakpoint)
-            {
-                var bp = (Breakpoint)breakEvent;
-                bool insideLoadedRange;
-                bool generic;
-
-                bi.FileName = bp.FileName;
-
-                bool found = false;
-                foreach (var location in FindLocationsByFile(bp.FileName, bp.Line, bp.Column, out generic, out insideLoadedRange))
-                {
-                    OnDebuggerOutput(false, string.Format("Resolved pending breakpoint at '{0}:{1},{2}' to {3} [0x{4:x5}].\n",
-                        bp.FileName, bp.Line, bp.Column, GetPrettyMethodName(location.Method), location.ILOffset));
-
-                    bi.Location = location;
-                    InsertBreakpoint(bp, bi);
-                    found = true;
-                    bi.SetStatus(BreakEventStatus.Bound, null);
-                }
-
-                lock (pending_bes)
-                {
-                    pending_bes.Add(bi);
-                }
-
-                if (!found)
-                {
-                    if (insideLoadedRange)
-                        bi.SetStatus(BreakEventStatus.Invalid, null);
-                    else
-                        bi.SetStatus(BreakEventStatus.NotBound, null);
-                }
-            }
-            else if (breakEvent is Catchpoint)
-            {
-                var cp = (Catchpoint)breakEvent;
-
-                if (!types.ContainsKey(cp.ExceptionName))
-                {
-                    //
-                    // Same as in FindLocationByFile (), fetch types matching the type name
-                    if (vm.Version.AtLeast(2, 9))
-                    {
-                        foreach (MDB.TypeMirror t in vm.GetTypes(cp.ExceptionName, false))
-                            ProcessType(t);
-                    }
-                }
-
-                List<MDB.TypeMirror> typesList;
-                if (types.TryGetValue(cp.ExceptionName, out typesList))
-                {
-                    foreach (var type in typesList)
-                        InsertCatchpoint(cp, bi, type);
-                    bi.SetStatus(BreakEventStatus.Bound, null);
-                }
-                else
-                {
-                    bi.TypeName = cp.ExceptionName;
-                    lock (pending_bes)
-                    {
-                        pending_bes.Add(bi);
-                    }
-
-                    bi.SetStatus(BreakEventStatus.NotBound, null);
-                }
-            }
-
-            UpdateTypeLoadFilters();
-            return bi;
-        }
+//        protected BreakEventInfo OnInsertBreakEvent(BreakEvent breakEvent)
+//        {
+//            var bi = new BreakInfo();
+//
+//            if (HasExited)
+//            {
+//                bi.SetStatus(BreakEventStatus.Disconnected, null);
+//                return bi;
+//            }
+//
+//            if (breakEvent is FunctionBreakpoint)
+//            {
+//                var fb = (FunctionBreakpoint)breakEvent;
+//
+//                foreach (var method in FindMethodsByName(fb.FunctionName, fb.ParamTypes))
+//                {
+//                    if (!ResolveFunctionBreakpoint(bi, fb, method))
+//                    {
+//                        bi.SetStatus(BreakEventStatus.NotBound, null);
+//                    }
+//                }
+//
+//                // TODO: handle types like GenericType<>, GenericType<SomeOtherType>, and GenericType<...>+NestedGenricType<...>
+//                var bracket = fb.FunctionName.IndexOf('(');
+//                int dot;
+//                if (bracket != -1)
+//                {
+//                    //Handle stuff like SomeNamespace.SomeType.Method(SomeOtherNamespace.SomeOtherType)
+//                    dot = fb.FunctionName.LastIndexOf('.', bracket);
+//                }
+//                else
+//                {
+//                    dot = fb.FunctionName.LastIndexOf('.');
+//                }
+//
+//                if (dot != -1)
+//                    bi.TypeName = fb.FunctionName.Substring(0, dot);
+//
+//                bi.SetStatus(BreakEventStatus.NotBound, null);
+//                lock (pending_bes)
+//                {
+//                    pending_bes.Add(bi);
+//                }
+//            }
+//            else if (breakEvent is InstructionBreakpoint)
+//            {
+//                var bp = (InstructionBreakpoint)breakEvent;
+//
+//                var insideTypeRange = true;
+//                bool generic;
+//
+//                bi.FileName = bp.FileName;
+//
+//                MDB.Location location;
+//                if ((location = FindLocationByILOffset(bp, bp.FileName, out generic, out insideTypeRange)) != null)
+//                {
+//                    bi.Location = location;
+//                    InsertBreakpoint(bp, bi);
+//                    bi.SetStatus(BreakEventStatus.Bound, null);
+//                }
+//                else if (insideTypeRange)
+//                {
+//                    bi.SetStatus(BreakEventStatus.Invalid, null);
+//                }
+//                else
+//                {
+//                    bi.SetStatus(BreakEventStatus.NotBound, null);
+//                }
+//
+//                lock (pending_bes)
+//                {
+//                    pending_bes.Add(bi);
+//                }
+//            }
+//            else if (breakEvent is Breakpoint)
+//            {
+//                var bp = (Breakpoint)breakEvent;
+//                bool insideLoadedRange;
+//                bool generic;
+//
+//                bi.FileName = bp.FileName;
+//
+//                bool found = false;
+//                foreach (var location in FindLocationsByFile(bp.FileName, bp.Line, bp.Column, out generic, out insideLoadedRange))
+//                {
+//                    OnDebuggerOutput(false, string.Format("Resolved pending breakpoint at '{0}:{1},{2}' to {3} [0x{4:x5}].\n",
+//                        bp.FileName, bp.Line, bp.Column, GetPrettyMethodName(location.Method), location.ILOffset));
+//
+//                    bi.Location = location;
+//                    InsertBreakpoint(bp, bi);
+//                    found = true;
+//                    bi.SetStatus(BreakEventStatus.Bound, null);
+//                }
+//
+//                lock (pending_bes)
+//                {
+//                    pending_bes.Add(bi);
+//                }
+//
+//                if (!found)
+//                {
+//                    if (insideLoadedRange)
+//                        bi.SetStatus(BreakEventStatus.Invalid, null);
+//                    else
+//                        bi.SetStatus(BreakEventStatus.NotBound, null);
+//                }
+//            }
+//            else if (breakEvent is Catchpoint)
+//            {
+//                var cp = (Catchpoint)breakEvent;
+//
+//                if (!types.ContainsKey(cp.ExceptionName))
+//                {
+//                    //
+//                    // Same as in FindLocationByFile (), fetch types matching the type name
+//                    if (vm.Version.AtLeast(2, 9))
+//                    {
+//                        foreach (MDB.TypeMirror t in vm.GetTypes(cp.ExceptionName, false))
+//                            ProcessType(t);
+//                    }
+//                }
+//
+//                List<MDB.TypeMirror> typesList;
+//                if (types.TryGetValue(cp.ExceptionName, out typesList))
+//                {
+//                    foreach (var type in typesList)
+//                        InsertCatchpoint(cp, bi, type);
+//                    bi.SetStatus(BreakEventStatus.Bound, null);
+//                }
+//                else
+//                {
+//                    bi.TypeName = cp.ExceptionName;
+//                    lock (pending_bes)
+//                    {
+//                        pending_bes.Add(bi);
+//                    }
+//
+//                    bi.SetStatus(BreakEventStatus.NotBound, null);
+//                }
+//            }
+//
+//            UpdateTypeLoadFilters();
+//            return bi;
+//        }
 
         void UpdateTypeLoadFilters()
         {
@@ -1284,84 +1283,84 @@ namespace Mono.Debugging.Soft
             return null;
         }
 
-        protected override void OnRemoveBreakEvent(BreakEventInfo eventInfo)
-        {
-            if (HasExited)
-                return;
+//        protected override void OnRemoveBreakEvent(BreakEventInfo eventInfo)
+//        {
+//            if (HasExited)
+//                return;
+//
+//            var bi = (BreakInfo)eventInfo;
+//            if (bi.Requests.Count != 0)
+//            {
+//                foreach (var request in bi.Requests.Keys)
+//                {
+//                    request.Enabled = false;
+//                    breakpoints.Remove(request);
+//                }
+//
+//                RemoveQueuedBreakEvents(bi.Requests);
+//            }
+//
+//            lock (pending_bes)
+//            {
+//                pending_bes.Remove(bi);
+//            }
+//        }
+//
+//        protected override void OnEnableBreakEvent(BreakEventInfo eventInfo, bool enable)
+//        {
+//            if (HasExited)
+//                return;
+//
+//            var bi = (BreakInfo)eventInfo;
+//            if (bi.Requests.Count != 0)
+//            {
+//                foreach (var request in bi.Requests.Keys)
+//                    request.Enabled = enable;
+//
+//                if (!enable)
+//                    RemoveQueuedBreakEvents(bi.Requests);
+//            }
+//        }
+//
+//        protected override void OnUpdateBreakEvent(BreakEventInfo eventInfo) { }
 
-            var bi = (BreakInfo)eventInfo;
-            if (bi.Requests.Count != 0)
-            {
-                foreach (var request in bi.Requests.Keys)
-                {
-                    request.Enabled = false;
-                    breakpoints.Remove(request);
-                }
-
-                RemoveQueuedBreakEvents(bi.Requests);
-            }
-
-            lock (pending_bes)
-            {
-                pending_bes.Remove(bi);
-            }
-        }
-
-        protected override void OnEnableBreakEvent(BreakEventInfo eventInfo, bool enable)
-        {
-            if (HasExited)
-                return;
-
-            var bi = (BreakInfo)eventInfo;
-            if (bi.Requests.Count != 0)
-            {
-                foreach (var request in bi.Requests.Keys)
-                    request.Enabled = enable;
-
-                if (!enable)
-                    RemoveQueuedBreakEvents(bi.Requests);
-            }
-        }
-
-        protected override void OnUpdateBreakEvent(BreakEventInfo eventInfo) { }
-
-        void InsertBreakpoint(Breakpoint bp, BreakInfo bi)
-        {
-            InsertBreakpoint(bp, bi, bi.Location.Method, bi.Location.ILOffset);
-        }
-
-        void InsertBreakpoint(Breakpoint bp, BreakInfo bi, MDB.MethodMirror method, int ilOffset)
-        {
-            MDB.EventRequest request;
-
-            request = vm.SetBreakpoint(method, ilOffset);
-            request.Enabled = bp.Enabled;
-            bi.Requests.Add(request, method.DeclaringType.Assembly);
-
-            breakpoints[request] = bi;
-
-            if (bi.Location != null && (bi.Location.LineNumber != bp.Line || bi.Location.ColumnNumber != bp.Column))
-                bi.AdjustBreakpointLocation(bi.Location.LineNumber, bi.Location.ColumnNumber);
-        }
-
-        void InsertCatchpoint(Catchpoint cp, BreakInfo bi, MDB.TypeMirror excType)
-        {
-            MDB.ExceptionEventRequest request;
-
-            request = vm.CreateExceptionRequest(excType, true, true);
-
-            //Commenting Count so we have better control of counting
-            //because VM only allows count equal to some number but we need also
-            //lower, greater, equal or greater...
-            //Plus some day we might want to put filtering before counting...
-            //request.Count = cp.HitCount; // Note: need to set HitCount *before* enabling
-            if (vm.Version.AtLeast(2, 25))
-                request.IncludeSubclasses = cp.IncludeSubclasses; // Note: need to set IncludeSubclasses *before* enabling
-            request.Enabled = cp.Enabled;
-            bi.Requests.Add(request, excType.Assembly);
-
-            breakpoints[request] = bi;
-        }
+//        void InsertBreakpoint(Breakpoint bp, BreakInfo bi)
+//        {
+//            InsertBreakpoint(bp, bi, bi.Location.Method, bi.Location.ILOffset);
+//        }
+//
+//        void InsertBreakpoint(Breakpoint bp, BreakInfo bi, MDB.MethodMirror method, int ilOffset)
+//        {
+//            MDB.EventRequest request;
+//
+//            request = vm.SetBreakpoint(method, ilOffset);
+//            request.Enabled = bp.Enabled;
+//            bi.Requests.Add(request, method.DeclaringType.Assembly);
+//
+//            breakpoints[request] = bi;
+//
+//            if (bi.Location != null && (bi.Location.LineNumber != bp.Line || bi.Location.ColumnNumber != bp.Column))
+//                bi.AdjustBreakpointLocation(bi.Location.LineNumber, bi.Location.ColumnNumber);
+//        }
+//
+//        void InsertCatchpoint(Catchpoint cp, BreakInfo bi, MDB.TypeMirror excType)
+//        {
+//            MDB.ExceptionEventRequest request;
+//
+//            request = vm.CreateExceptionRequest(excType, true, true);
+//
+//            //Commenting Count so we have better control of counting
+//            //because VM only allows count equal to some number but we need also
+//            //lower, greater, equal or greater...
+//            //Plus some day we might want to put filtering before counting...
+//            //request.Count = cp.HitCount; // Note: need to set HitCount *before* enabling
+//            if (vm.Version.AtLeast(2, 25))
+//                request.IncludeSubclasses = cp.IncludeSubclasses; // Note: need to set IncludeSubclasses *before* enabling
+//            request.Enabled = cp.Enabled;
+//            bi.Requests.Add(request, excType.Assembly);
+//
+//            breakpoints[request] = bi;
+//        }
 
         static bool CheckTypeName(string typeName, string name)
         {
@@ -1804,12 +1803,32 @@ namespace Mono.Debugging.Soft
 
         void HandleEventSet(MDB.EventSet es)
         {
-            var type = es[0].EventType;
+            MDB.Event firstEvent = es[0];
+            var type = firstEvent.EventType;
 
 #if DEBUG_EVENT_QUEUEING
 			if (type != TypeLoadEvent)
 				Console.WriteLine ("pp eventset({0}): {1}", es.Events.Length, es[0]);
 #endif
+
+            if (es.Events.Length > 1)
+            {
+                if (es.Events.Any(x => x.EventType != type))
+                {
+                    DebuggerLoggingService.LogError("Received several events with different event types: " + es.Events.Select(x => x.EventType.ToString()).Join(", "));
+                }
+                
+                if (es.Events.Any(x =>
+                {
+                    if (x.EventType == MDB.EventType.Breakpoint)
+                    {
+                        return x.EventType != MDB.EventType.Exception;
+                    }
+
+                    return true;
+                }));
+                DebuggerLoggingService.LogMessage("Received more than one event, first event type: {0}", type);
+            }
 
             // If we are currently stopped on a thread, and the break events are on a different thread, we must queue
             // that event set and dequeue it next time we resume. This eliminates race conditions when multiple threads
@@ -1817,43 +1836,53 @@ namespace Mono.Debugging.Soft
             //
             try
             {
-                bool isBreakEvent = type == MDB.EventType.Step || type == MDB.EventType.Breakpoint || type == MDB.EventType.Exception || type == MDB.EventType.UserBreak;
-                if (isBreakEvent)
+                switch (firstEvent)
                 {
-                    if (current_thread != null && es[0].Thread.Id != current_thread.Id)
-                    {
-                        QueueBreakEventSet(es.Events);
-                    }
-                    else
-                    {
-                        HandleBreakEventSet(es.Events, false);
-                    }
-
-                    return;
-                }
-
-                switch (type)
-                {
-                    case MDB.EventType.AssemblyLoad:
-                        HandleAssemblyLoadEvents(Array.ConvertAll(es.Events, item => (MDB.AssemblyLoadEvent)item));
+                    case MDB.UserBreakEvent _:
+                    case MDB.BreakpointEvent _:
+                    case MDB.ExceptionEvent _:
+                    case MDB.StepEvent _:
+                        if (current_thread != null && firstEvent.Thread.Id != current_thread.Id)
+                        {
+                            QueueBreakEvent(firstEvent);
+                            return;
+                        }
+                        else
+                        {
+                            HandleBreakEvent(firstEvent);
+                            return;
+                        }
+                        return;
+                    case MDB.VMStartEvent @event:
+                        HandleVMStartEvents(@event);
                         break;
-                    case MDB.EventType.AppDomainUnload:
-                        HandleDomainUnloadEvents(Array.ConvertAll(es.Events, item => (MDB.AppDomainUnloadEvent)item));
+                    case MDB.VMDeathEvent @event:
+                        TODO;
                         break;
-                    case MDB.EventType.VMStart:
-                        HandleVMStartEvents(Array.ConvertAll(es.Events, item => (MDB.VMStartEvent)item));
+                    case MDB.VMDisconnectEvent @event:
+                        TODO;
                         break;
-                    case MDB.EventType.TypeLoad:
-                        HandleTypeLoadEvents(Array.ConvertAll(es.Events, item => (MDB.TypeLoadEvent)item));
+                    case MDB.AssemblyLoadEvent @event:
+                        HandleAssemblyLoadEvent(@event);
                         break;
-                    case MDB.EventType.ThreadStart:
-                        HandleThreadStartEvents(Array.ConvertAll(es.Events, item => (MDB.ThreadStartEvent)item));
+                    case MDB.AppDomainUnloadEvent @event:
+                        HandleDomainUnloadEvent(@event);
                         break;
-                    case MDB.EventType.ThreadDeath:
-                        HandleThreadDeathEvents(Array.ConvertAll(es.Events, item => (MDB.ThreadDeathEvent)item));
+                    case MDB.TypeLoadEvent @event:
+                        HandleTypeLoadEvent(@event, out var typeAlreadyLoaded);
+                        if (typeAlreadyLoaded)
+                        {
+                            return;
+                        }
                         break;
-                    case MDB.EventType.UserLog:
-                        HandleUserLogEvents(Array.ConvertAll(es.Events, item => (MDB.UserLogEvent)item));
+                    case MDB.ThreadStartEvent @event:
+                        HandleThreadStartEvent(@event);
+                        break;
+                    case MDB.ThreadDeathEvent @event:
+                        HandleThreadDeathEvent(@event);
+                        break;
+                    case MDB.UserLogEvent @event:
+                        HandleUserLogEvents(@event);
                         break;
                     default:
                         DebuggerLoggingService.LogMessage("Ignoring unknown debugger event type {0}", type);
@@ -2049,9 +2078,9 @@ namespace Mono.Debugging.Soft
             return false;
         }
 
-        void HandleBreakEventSet(MDB.Event[] es, bool dequeuing)
+        void HandleBreakEvent(MDB.Event @event)
         {
-            if (dequeuing && HasExited)
+            if (HasExited)
                 return;
 
             TargetEventType etype = TargetEventType.TargetStopped;
@@ -2063,12 +2092,9 @@ namespace Mono.Debugging.Soft
             bool resume = true;
             BreakInfo binfo;
 
-            if (es[0].EventType == MDB.EventType.Exception)
+            if (@event.EventType == MDB.EventType.Exception)
             {
-                var bad = es.FirstOrDefault(ee => ee.EventType != MDB.EventType.Exception);
-                if (bad != null)
-                    throw new Exception("Catchpoint eventset had unexpected event type " + bad.GetType());
-                var ev = (MDB.ExceptionEvent)es[0];
+                var ev = (MDB.ExceptionEvent)@event;
                 exception = ev.Exception;
                 if (ev.Request == unhandledExceptionRequest)
                 {
@@ -2079,8 +2105,8 @@ namespace Mono.Debugging.Soft
                 else
                 {
                     // Set the exception for this thread so that CatchPoint Print message(tracing) of {$exception} works
-                    activeExceptionsByThread[es[0].Thread.ThreadId] = exception;
-                    if (ExceptionInUserCode(ev) && !HandleBreakpoint(es[0].Thread, ev.Request))
+                    activeExceptionsByThread[@event.Thread.ThreadId] = exception;
+                    if (ExceptionInUserCode(ev) && !HandleBreakpoint(@event.Thread, ev.Request, exception.Type))
                     {
                         etype = TargetEventType.ExceptionThrown;
                         resume = false;
@@ -2088,7 +2114,7 @@ namespace Mono.Debugging.Soft
 
                     // Remove exception from the thread so that when the program stops due to stepFinished/programPause/breakPoint...
                     // we don't have on out-dated exception(setting and unsetting few lines later is needed because it's used inside HandleBreakpoint)
-                    activeExceptionsByThread.Remove(es[0].Thread.ThreadId);
+                    activeExceptionsByThread.Remove(@event.Thread.ThreadId);
 
                     // Get the breakEvent so that we can check if we should ignore it later
                     if (breakpoints.TryGetValue(ev.Request, out binfo))
@@ -2098,50 +2124,47 @@ namespace Mono.Debugging.Soft
             else
             {
                 //always need to evaluate all breakpoints, some might be tracepoints or conditional bps with counters
-                foreach (MDB.Event e in es)
+                if (@event.EventType == MDB.EventType.Breakpoint)
                 {
-                    if (e.EventType == MDB.EventType.Breakpoint)
-                    {
-                        var be = (MDB.BreakpointEvent)e;
-                        var hasBreakInfo = breakpoints.TryGetValue(be.Request, out binfo);
+                    var be = (MDB.BreakpointEvent)@event;
+                    var hasBreakInfo = breakpoints.TryGetValue(be.Request, out binfo);
 
-                        if (!HandleBreakpoint(e.Thread, be.Request))
-                        {
-                            etype = TargetEventType.TargetHitBreakpoint;
-                            autoStepInto = false;
-                            resume = false;
-                            if (hasBreakInfo)
-                                breakEvent = binfo.BreakEvent;
-                        }
-
-                        if (hasBreakInfo)
-                        {
-                            if (currentStepRequest != null &&
-                                currentStepRequest.Depth != MDB.StepDepth.Out &&
-                                binfo.Location.ILOffset == currentAddress &&
-                                e.Thread.Id == currentStepRequest.Thread.Id &&
-                                currentStackDepth == e.Thread.GetFrames().Length)
-                                redoCurrentStep = true;
-                        }
-                    }
-                    else if (e.EventType == MDB.EventType.Step)
+                    if (!HandleBreakpoint(@event.Thread, be.Request, null))
                     {
-                        var stepRequest = e.Request as MDB.StepEventRequest;
-                        steppedInto = IsStepIntoRequest(stepRequest);
-                        steppedOut = IsStepOutRequest(stepRequest);
-                        etype = TargetEventType.TargetStopped;
-                        resume = false;
-                    }
-                    else if (e.EventType == MDB.EventType.UserBreak)
-                    {
-                        etype = TargetEventType.TargetStopped;
+                        etype = TargetEventType.TargetHitBreakpoint;
                         autoStepInto = false;
                         resume = false;
+                        if (hasBreakInfo)
+                            breakEvent = binfo.BreakEvent;
                     }
-                    else
+
+                    if (hasBreakInfo)
                     {
-                        throw new Exception("Break eventset had unexpected event type " + e.GetType());
+                        if (currentStepRequest != null &&
+                            currentStepRequest.Depth != MDB.StepDepth.Out &&
+                            binfo.Location.ILOffset == currentAddress &&
+                            @event.Thread.Id == currentStepRequest.Thread.Id &&
+                            currentStackDepth == @event.Thread.GetFrames().Length)
+                            redoCurrentStep = true;
                     }
+                }
+                else if (@event.EventType == MDB.EventType.Step)
+                {
+                    var stepRequest = @event.Request as MDB.StepEventRequest;
+                    steppedInto = IsStepIntoRequest(stepRequest);
+                    steppedOut = IsStepOutRequest(stepRequest);
+                    etype = TargetEventType.TargetStopped;
+                    resume = false;
+                }
+                else if (@event.EventType == MDB.EventType.UserBreak)
+                {
+                    etype = TargetEventType.TargetStopped;
+                    autoStepInto = false;
+                    resume = false;
+                }
+                else
+                {
+                    throw new Exception("Break eventset had unexpected event type " + @event.GetType());
                 }
             }
 
@@ -2150,7 +2173,7 @@ namespace Mono.Debugging.Soft
                 MDB.StepDepth depth = currentStepRequest.Depth;
                 MDB.StepSize size = currentStepRequest.Size;
 
-                current_thread = recent_thread = es[0].Thread;
+                current_thread = recent_thread = @event.Thread;
                 currentStepRequest.Enabled = false;
                 currentStepRequest = null;
 
@@ -2171,7 +2194,7 @@ namespace Mono.Debugging.Soft
                     currentStepRequest = null;
                 }
 
-                current_thread = recent_thread = es[0].Thread;
+                current_thread = recent_thread = @event.Thread;
 
                 if (exception != null)
                     activeExceptionsByThread[current_thread.ThreadId] = exception;
@@ -2247,8 +2270,8 @@ namespace Mono.Debugging.Soft
                 else
                 {
                     var args = new TargetEventArgs(etype);
-                    args.Process = OnGetProcesses()[0];
-                    args.Thread = GetThread(args.Process, current_thread);
+                    args.Process = OnGetProcessInfo();
+                    args.Thread = GetThread(current_thread);
                     args.Backtrace = backtrace;
                     args.BreakEvent = breakEvent;
 
@@ -2257,19 +2280,16 @@ namespace Mono.Debugging.Soft
             }
         }
 
-        void HandleAssemblyLoadEvents(MDB.AssemblyLoadEvent[] events)
+        void HandleAssemblyLoadEvent(MDB.AssemblyLoadEvent @event)
         {
-            var asm = events[0].Assembly;
-            if (events.Length > 1 && events.Any(a => a.Assembly != asm))
-                throw new InvalidOperationException("Simultaneous AssemblyLoadEvent for multiple assemblies");
+            var asm = @event.Assembly;
             RegisterAssembly(asm);
-            bool isExternal;
-            isExternal = !UpdateAssemblyFilters(asm) && userAssemblyNames != null;
+            var isExternal = !UpdateAssemblyFilters(asm) && userAssemblyNames != null;
 
             OnAssemblyLoaded(asm.Location);
 
             string flagExt = isExternal ? " [External]" : "";
-            OnDebuggerOutput(false, string.Format("Loaded assembly: {0}{1}\n", asm.Location, flagExt));
+            OnDebuggerOutput(false, $"Loaded assembly: {asm.Location}{flagExt}\n");
         }
 
         void RegisterAssembly(MDB.AssemblyMirror asm)
@@ -2285,11 +2305,9 @@ namespace Mono.Debugging.Soft
             }
         }
 
-        void HandleDomainUnloadEvents(MDB.AppDomainUnloadEvent[] events)
+        void HandleDomainUnloadEvent(MDB.AppDomainUnloadEvent @event)
         {
-            var domain = events[0].Domain;
-            if (events.Length > 1 && events.Any(a => a.Domain != domain))
-                throw new InvalidOperationException("Simultaneous DomainUnloadEvents for multiple domains");
+            var domain = @event.Domain;
             if (domainAssembliesToUnload.TryGetValue(domain, out var asmList))
             {
                 foreach (var asm in asmList)
@@ -2371,56 +2389,70 @@ namespace Mono.Debugging.Soft
             }
         }
 
-        void HandleVMStartEvents(MDB.VMStartEvent[] events)
+        void HandleVMStartEvents(MDB.VMStartEvent @event)
         {
-            var thread = events[0].Thread;
-            if (events.Length > 1)
-                throw new InvalidOperationException("Simultaneous VMStartEvents");
-
-            OnStarted(new ThreadInfo(0, GetId(thread), GetThreadName(thread), null));
+            var thread = @event.Thread;
+            OnStarted(new ThreadInfo(GetId(thread), GetThreadName(thread), null, null));
 
             //HACK: 2.6.1 VM doesn't emit type load event, so work around it
+            var corlib = vm.RootDomain.Corlib;
+            RaiseModuleLoaded(new ModuleLoadedEventArgs(
+                corlib.GetName(),
+                corlib.Location,
+                corlib.Domain.FriendlyName,
+                corlib.ManifestModule.GetMvidSafe()));
             var t = vm.RootDomain.Corlib.GetType("System.Exception", false, false);
             if (t != null)
             {
                 ResolveBreakpoints(t);
             }
+
+            UpdateTypeLoadFilters();
+            ProcessLoadedAssemblyIfNeeded(corlib);
         }
 
-        void HandleTypeLoadEvents(MDB.TypeLoadEvent[] events)
+        private void ProcessLoadedAssemblyIfNeeded(MDB.AssemblyMirror assemblyMirror)
         {
-            var type = events[0].Type;
-            if (events.Length > 1 && events.Any(a => a.Type != type))
-                throw new InvalidOperationException("Simultaneous TypeLoadEvents for multiple types");
+            
+        }
 
-            List<MDB.TypeMirror> typesList;
-            if (!(types.TryGetValue(type.FullName, out typesList) && typesList.Contains(type)))
+        void HandleTypeLoadEvent(MDB.TypeLoadEvent @event, out bool typeAlreadyLoaded)
+        {
+            var type = @event.Type;
+            typeAlreadyLoaded = false;
+            ProcessLoadedAssemblyIfNeeded(type.Assembly);
+            AppDomainManager.ProcessType(type);
+            BreakpointsManager.BindBreakEventsForType(type);
+            if (TypeLoadManager.AlreadyLoadedTypes.Contains(type))
+            {
+                return;
+            }
+
+            typeAlreadyLoaded = true;
+            if (!(types.TryGetValue(type.FullName, out var typesList) && typesList.Contains(type)))
                 ResolveBreakpoints(type);
         }
 
-        void HandleThreadStartEvents(MDB.ThreadStartEvent[] events)
+        void HandleThreadStartEvent(MDB.ThreadStartEvent @event)
         {
             current_threads = null;
-            var thread = events[0].Thread;
-            if (events.Length > 1 && events.Any(a => a.Thread != thread))
-                throw new InvalidOperationException("Simultaneous ThreadStartEvents for multiple threads");
-
+            var thread = @event.Thread;
             var name = GetThreadName(thread);
             var id = GetId(thread);
-            OnDebuggerOutput(false, string.Format("Thread started: {0} #{1}\n", name, id));
+            OnDebuggerOutput(false, $"Thread started: {name} #{id}\n");
             OnTargetEvent(new TargetEventArgs(TargetEventType.ThreadStarted)
             {
-                Thread = new ThreadInfo(0, id, name, null),
+                Thread = new ThreadInfo(id, name, null, null),
             });
         }
 
-        void HandleThreadDeathEvents(MDB.ThreadDeathEvent[] events)
+        void HandleThreadDeathEvent(MDB.ThreadDeathEvent @event)
         {
             current_threads = null;
             MDB.ThreadMirror thread;
             try
             {
-                thread = events[0].Thread;
+                thread = @event.Thread;
             }
             catch (MDB.ObjectCollectedException)
             {
@@ -2433,22 +2465,18 @@ namespace Mono.Debugging.Soft
                 throw;
             }
 
-            if (events.Length > 1 && events.Any(a => a.Thread != thread))
-                throw new InvalidOperationException("Simultaneous ThreadDeathEvents for multiple threads");
-
             var name = GetThreadName(thread);
             var id = GetId(thread);
-            OnDebuggerOutput(false, string.Format("Thread finished: {0} #{1}\n", name, id));
+            OnDebuggerOutput(false, $"Thread finished: {name} #{id}\n");
             OnTargetEvent(new TargetEventArgs(TargetEventType.ThreadStopped)
             {
-                Thread = new ThreadInfo(0, id, name, null),
+                Thread = new ThreadInfo(id, name, null, null),
             });
         }
 
-        void HandleUserLogEvents(MDB.UserLogEvent[] events)
+        void HandleUserLogEvents(MDB.UserLogEvent @event)
         {
-            foreach (var ul in events)
-                OnTargetDebug(ul.Level, ul.Category, ul.Message);
+            OnTargetDebug(@event.Level, @event.Category, @event.Message);
         }
 
         public MDB.ObjectMirror GetExceptionObject(MDB.ThreadMirror thread)
@@ -2458,23 +2486,22 @@ namespace Mono.Debugging.Soft
             return activeExceptionsByThread.TryGetValue(thread.ThreadId, out obj) ? obj : null;
         }
 
-        void QueueBreakEventSet(MDB.Event[] eventSet)
+        void QueueBreakEvent(MDB.Event @event)
         {
 #if DEBUG_EVENT_QUEUEING
 			Console.WriteLine ("qq eventset({0}): {1}", eventSet.Length, eventSet[0]);
 #endif
-            var events = new List<MDB.Event>(eventSet);
-            lock (queuedEventSets)
+            lock (queuedEvents)
             {
-                queuedEventSets.AddLast(events);
+                queuedEvents.Add(@event);
             }
         }
 
         public void RemoveQueuedBreakEvents(IEnumerable<MDB.EventRequest> requests)
         {
             int num;
-            lock (queuedEventSets)
-                num = queuedEventSets.RemoveAll((Predicate<List<MDB.Event>>)(evtList => evtList.Count == evtList.RemoveAll(evt => requests.Contains(evt.Request))));
+            lock (queuedEvents)
+                num = queuedEvents.RemoveAll((Predicate<List<MDB.Event>>)(evtList => evtList.Count == evtList.RemoveAll(evt => requests.Contains(evt.Request))));
             for (int index = 0; index < num; ++index)
                 vm.Resume();
         }
@@ -2483,9 +2510,9 @@ namespace Mono.Debugging.Soft
         {
             int resume = 0;
 
-            lock (queuedEventSets)
+            lock (queuedEvents)
             {
-                var node = queuedEventSets.First;
+                var node = queuedEvents.First;
 
                 while (node != null)
                 {
@@ -2507,7 +2534,7 @@ namespace Mono.Debugging.Soft
                     {
                         var d = node;
                         node = node.Next;
-                        queuedEventSets.Remove(d);
+                        queuedEvents.Remove(d);
                         resume++;
                     }
                     else
@@ -2524,13 +2551,13 @@ namespace Mono.Debugging.Soft
         void DequeueEventsForFirstThread()
         {
             List<List<MDB.Event>> dequeuing;
-            lock (queuedEventSets)
+            lock (queuedEvents)
             {
-                if (queuedEventSets.Count < 1)
+                if (queuedEvents.Count < 1)
                     return;
 
                 dequeuing = new List<List<MDB.Event>>();
-                var node = queuedEventSets.First;
+                var node = queuedEvents.First;
 
                 //making this the current thread means that all events from other threads will get queued
                 current_thread = node.Value[0].Thread;
@@ -2541,7 +2568,7 @@ namespace Mono.Debugging.Soft
                         var d = node;
                         node = node.Next;
                         dequeuing.Add(d.Value);
-                        queuedEventSets.Remove(d);
+                        queuedEvents.Remove(d);
                     }
                     else
                     {
@@ -2564,7 +2591,7 @@ namespace Mono.Debugging.Soft
                     {
                         try
                         {
-                            HandleBreakEventSet(es.ToArray(), true);
+                            HandleBreakEvent(es.ToArray(), true);
                         }
                         catch (Exception ex)
                         {
@@ -3750,13 +3777,13 @@ namespace Mono.Debugging.Soft
             //we use "getprocesses" instead of "ongetprocesses" because it attaches the process to the session
             //using private Mono.Debugging API, so our thread/backtrace calls will cache stuff that will get used later
             var processInfo = GetProcessInfo();
-            var process = GetProcesses()[0];
+            var process = GetProcessInfo();
             EnsureRecentThreadIsValid(process);
             current_thread = recent_thread;
             OnTargetEvent(new TargetEventArgs(TargetEventType.TargetStopped)
             {
                 Process = process,
-                Thread = GetThread(process, recent_thread),
+                Thread = GetThread(recent_thread),
                 Backtrace = GetThreadBacktrace(recent_thread)
             });
         }

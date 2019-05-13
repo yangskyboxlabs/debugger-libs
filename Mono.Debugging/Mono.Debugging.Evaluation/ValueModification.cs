@@ -1,5 +1,6 @@
 using System;
 using Mono.Debugging.Backend;
+using Mono.Debugging.Client;
 
 namespace Mono.Debugging.Evaluation
 {
@@ -30,7 +31,7 @@ namespace Mono.Debugging.Evaluation
         }
 
         internal static ValueReference<TType, TValue> EvaluateRightHandValue<TType, TValue>(
-            ExpressionEvaluator<TType, TValue> evaluator,
+            IExpressionEvaluator<TType, TValue> evaluator,
             EvaluationContext context,
             string value,
             TType expectedType)
@@ -81,7 +82,7 @@ namespace Mono.Debugging.Evaluation
 
         internal static EvaluationResult ModifyValue<TContext, TType, TValue>(
             ObjectValueAdaptor<TType, TValue> adapter,
-            ExpressionEvaluator<TType, TValue> evaluator,
+            IExpressionEvaluator<TType, TValue> evaluator,
             TContext context,
             string value,
             TType expectedType,

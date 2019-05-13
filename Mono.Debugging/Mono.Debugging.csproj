@@ -12,6 +12,7 @@
     <AssemblyOriginatorKeyFile>mono.debugging.snk</AssemblyOriginatorKeyFile>
     <AssemblyName>Mono.Debugging</AssemblyName>
       <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
+      <LangVersion>latest</LangVersion>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>True</DebugSymbols>
@@ -67,24 +68,25 @@
     <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
-      <Compile Include="Mono.Debugging.Backend\IDebuggerHierarchicalObject.cs"/>
-      <Compile Include="Mono.Debugging.Client\AssemblyEventArgs.cs"/>
-      <Compile Include="Mono.Debugging.Client\Breakpoints\BreakpointsManager.cs"/>
-      <Compile Include="Mono.Debugging.Client\Breakpoints\DebuggerBreakEvent.cs"/>
-      <Compile Include="Mono.Debugging.Client\Breakpoints\IBindingBreakEvent.cs"/>
-      <Compile Include="Mono.Debugging.Client\Breakpoints\IBreakpointsManager.cs"/>
-      <Compile Include="Mono.Debugging.Client\Breakpoints\IDebuggerBreakEvent.cs"/>
-      <Compile Include="Mono.Debugging.Client\EvaluationExpression.cs"/>
+      <Compile Include="Mono.Debugging.Backend\IDebuggerHierarchicalObject.cs" />
+      <Compile Include="Mono.Debugging.Client\AssemblyEventArgs.cs" />
+      <Compile Include="Mono.Debugging.Client\Breakpoints\BreakpointsManager.cs" />
+      <Compile Include="Mono.Debugging.Client\Breakpoints\DebuggerBreakEvent.cs" />
+      <Compile Include="Mono.Debugging.Client\Breakpoints\IBindingBreakEvent.cs" />
+      <Compile Include="Mono.Debugging.Client\Breakpoints\IBreakpointsManager.cs" />
+      <Compile Include="Mono.Debugging.Client\Breakpoints\IDebuggerBreakEvent.cs" />
+      <Compile Include="Mono.Debugging.Client\EvaluationExpression.cs" />
+      <Compile Include="Mono.Debugging.Client\Events\ModuleLoadedEventArgs.cs" />
     <Compile Include="Mono.Debugging.Client\IExpressionEvaluator.cs" />
     <Compile Include="Mono.Debugging.Client\Breakpoint.cs" />
     <Compile Include="Mono.Debugging.Client\DebuggerSession.cs" />
     <Compile Include="Mono.Debugging.Client\Backtrace.cs" />
     <Compile Include="Mono.Debugging.Client\DebuggerStartInfo.cs" />
-      <Compile Include="Mono.Debugging.Client\IExpressionEvaluators.cs"/>
+      <Compile Include="Mono.Debugging.Client\IExpressionEvaluators.cs" />
     <Compile Include="Mono.Debugging.Client\ProcessEventArgs.cs" />
     <Compile Include="Mono.Debugging.Client\SourceLocation.cs" />
     <Compile Include="Mono.Debugging.Client\StackFrame.cs" />
-      <Compile Include="Mono.Debugging.Client\StringPresentationKind.cs"/>
+      <Compile Include="Mono.Debugging.Client\StringPresentationKind.cs" />
     <Compile Include="Mono.Debugging.Client\TargetEventArgs.cs" />
     <Compile Include="Mono.Debugging.Client\TargetEventType.cs" />
     <Compile Include="Mono.Debugging.Client\ThreadEventArgs.cs" />
@@ -111,46 +113,47 @@
     <Compile Include="Mono.Debugging.Backend\UpdateCallback.cs" />
     <Compile Include="Mono.Debugging.Evaluation\ArrayElementGroup.cs" />
     <Compile Include="Mono.Debugging.Evaluation\ArrayValueReference.cs" />
-      <Compile Include="Mono.Debugging.Evaluation\ArrayValueUtil.cs"/>
+      <Compile Include="Mono.Debugging.Evaluation\ArrayValueUtil.cs" />
     <Compile Include="Mono.Debugging.Evaluation\AsyncEvaluationTracker.cs" />
     <Compile Include="Mono.Debugging.Evaluation\AsyncOperationManager.cs" />
-      <Compile Include="Mono.Debugging.Evaluation\DebuggerValueExtension.cs"/>
+      <Compile Include="Mono.Debugging.Evaluation\DebuggerValueExtension.cs" />
     <Compile Include="Mono.Debugging.Evaluation\EvaluationContext.cs" />
-      <Compile Include="Mono.Debugging.Evaluation\EvaluationContextExtension.cs"/>
-      <Compile Include="Mono.Debugging.Evaluation\EvaluationStatistics.cs"/>
-      <Compile Include="Mono.Debugging.Evaluation\ExceptionInfoUtil.cs"/>
+      <Compile Include="Mono.Debugging.Evaluation\EvaluationContextExtension.cs" />
+      <Compile Include="Mono.Debugging.Evaluation\EvaluationStatistics.cs" />
+      <Compile Include="Mono.Debugging.Evaluation\ExceptionInfoUtil.cs" />
     <Compile Include="Mono.Debugging.Evaluation\ExpressionEvaluator.cs" />
-      <Compile Include="Mono.Debugging.Evaluation\Extension\ResolutionResultExtensions.cs"/>
+    <Compile Include="Mono.Debugging.Evaluation\ExpressionEvaluators.cs" />
+      <Compile Include="Mono.Debugging.Evaluation\Extension\ResolutionResultExtensions.cs" />
     <Compile Include="Mono.Debugging.Evaluation\FilteredMembersSource.cs" />
     <Compile Include="Mono.Debugging.Evaluation\ICollectionAdaptor.cs" />
-      <Compile Include="Mono.Debugging.Evaluation\LambdaBodyOutputVisitor.cs"/>
-      <Compile Include="Mono.Debugging.Evaluation\LambdaCompilation\CompilationResult.cs"/>
-      <Compile Include="Mono.Debugging.Evaluation\LambdaCompilation\ExpressionHelper.cs"/>
-      <Compile Include="Mono.Debugging.Evaluation\LambdaCompilation\InvocationExpressionLambdaCompiler.cs"/>
-      <Compile Include="Mono.Debugging.Evaluation\LambdaCompilation\LambdaCompiler.cs"/>
-      <Compile Include="Mono.Debugging.Evaluation\LambdaCompilation\LambdaHelperInstance.cs"/>
+      <Compile Include="Mono.Debugging.Evaluation\LambdaBodyOutputVisitor.cs" />
+      <Compile Include="Mono.Debugging.Evaluation\LambdaCompilation\CompilationResult.cs" />
+      <Compile Include="Mono.Debugging.Evaluation\LambdaCompilation\ExpressionHelper.cs" />
+      <Compile Include="Mono.Debugging.Evaluation\LambdaCompilation\InvocationExpressionLambdaCompiler.cs" />
+      <Compile Include="Mono.Debugging.Evaluation\LambdaCompilation\LambdaCompiler.cs" />
+      <Compile Include="Mono.Debugging.Evaluation\LambdaCompilation\LambdaHelperInstance.cs" />
     <Compile Include="Mono.Debugging.Evaluation\LiteralValueReference.cs" />
-      <Compile Include="Mono.Debugging.Evaluation\Metadata\IDebuggerMetadataBinder.cs"/>
+      <Compile Include="Mono.Debugging.Evaluation\Metadata\IDebuggerMetadataBinder.cs" />
     <Compile Include="Mono.Debugging.Evaluation\NamespaceValueReference.cs" />
     <Compile Include="Mono.Debugging.Evaluation\NullValueReference.cs" />
     <Compile Include="Mono.Debugging.Evaluation\ObjectValueAdaptor.cs" />
-      <Compile Include="Mono.Debugging.Evaluation\OverloadResolution\ResolutionResult.cs"/>
-      <Compile Include="Mono.Debugging.Evaluation\Presentation\IValuePresenter.cs"/>
+      <Compile Include="Mono.Debugging.Evaluation\OverloadResolution\ResolutionResult.cs" />
+      <Compile Include="Mono.Debugging.Evaluation\Presentation\IValuePresenter.cs" />
     <Compile Include="Mono.Debugging.Evaluation\RawViewSource.cs" />
     <Compile Include="Mono.Debugging.Evaluation\RemoteFrameObject.cs" />
-      <Compile Include="Mono.Debugging.Evaluation\RuntimeInvocation\IMethodResolver.cs"/>
-      <Compile Include="Mono.Debugging.Evaluation\RuntimeInvocation\InvocationInfo.cs"/>
-      <Compile Include="Mono.Debugging.Evaluation\RuntimeInvocation\InvocationResult.cs"/>
-      <Compile Include="Mono.Debugging.Evaluation\RuntimeInvocation\IRuntimeInvocator.cs"/>
-      <Compile Include="Mono.Debugging.Evaluation\RuntimeInvocation\MethodResolver.cs"/>
-      <Compile Include="Mono.Debugging.Evaluation\RuntimeInvocation\RuntimeInvocator.cs"/>
-      <Compile Include="Mono.Debugging.Evaluation\SpecialSymbolHelper.cs"/>
+      <Compile Include="Mono.Debugging.Evaluation\RuntimeInvocation\IMethodResolver.cs" />
+      <Compile Include="Mono.Debugging.Evaluation\RuntimeInvocation\InvocationInfo.cs" />
+      <Compile Include="Mono.Debugging.Evaluation\RuntimeInvocation\InvocationResult.cs" />
+      <Compile Include="Mono.Debugging.Evaluation\RuntimeInvocation\IRuntimeInvocator.cs" />
+      <Compile Include="Mono.Debugging.Evaluation\RuntimeInvocation\MethodResolver.cs" />
+      <Compile Include="Mono.Debugging.Evaluation\RuntimeInvocation\RuntimeInvocator.cs" />
+      <Compile Include="Mono.Debugging.Evaluation\SpecialSymbolHelper.cs" />
     <Compile Include="Mono.Debugging.Evaluation\TimedEvaluator.cs" />
     <Compile Include="Mono.Debugging.Evaluation\TimeOutException.cs" />
-      <Compile Include="Mono.Debugging.Evaluation\TypeNamingUtil.cs"/>
-      <Compile Include="Mono.Debugging.Evaluation\TypeResolution\ITypeResolver.cs"/>
+      <Compile Include="Mono.Debugging.Evaluation\TypeNamingUtil.cs" />
+      <Compile Include="Mono.Debugging.Evaluation\TypeResolution\ITypeResolver.cs" />
     <Compile Include="Mono.Debugging.Evaluation\TypeValueReference.cs" />
-      <Compile Include="Mono.Debugging.Evaluation\ValueModification.cs"/>
+      <Compile Include="Mono.Debugging.Evaluation\ValueModification.cs" />
     <Compile Include="Mono.Debugging.Evaluation\ValueReference.cs" />
     <Compile Include="Mono.Debugging.Evaluation\UserVariableReference.cs" />
     <Compile Include="Mono.Debugging.Client\DebuggerException.cs" />
@@ -179,10 +182,10 @@
     <Compile Include="Mono.Debugging.Client\DebuggerLoggingService.cs" />
     <Compile Include="Mono.Debugging.Client\RunToCursorBreakpoint.cs" />
     <Compile Include="Mono.Debugging.Evaluation\EnumerableElementGroup.cs" />
-      <Compile Include="Mono.Debugging.Tools\IMetaDataTools.cs"/>
-      <Compile Include="Mono.Debugging.Utils\BreakpointsManagerExtension.cs"/>
-      <Compile Include="Mono.Debugging.Utils\CollectionUtil.cs"/>
-      <Compile Include="Mono.Debugging.Utils\NRefactoryAstNodeExtension.cs"/>
+      <Compile Include="Mono.Debugging.Tools\IMetaDataTools.cs" />
+      <Compile Include="Mono.Debugging.Utils\BreakpointsManagerExtension.cs" />
+      <Compile Include="Mono.Debugging.Utils\CollectionUtil.cs" />
+      <Compile Include="Mono.Debugging.Utils\NRefactoryAstNodeExtension.cs" />
   </ItemGroup>
   <ItemGroup>
       <ProjectReference Include="..\..\External\NRefactory\ICSharpCode.NRefactory.CSharp\ICSharpCode.NRefactory.CSharp.csproj">
@@ -199,7 +202,7 @@
       </ProjectReference>
   </ItemGroup>
     <ItemGroup>
-        <None Include="packages.config"/>
+        <None Include="packages.config" />
     </ItemGroup>
   <Import Project="..\Mono.Debugging.settings" />
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />

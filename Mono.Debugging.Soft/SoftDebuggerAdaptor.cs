@@ -67,12 +67,11 @@ namespace Mono.Debugging.Soft
         }
 
         public SoftDebuggerAdaptor(
-            SoftSpecialSymbolHelper specialSymbolHelper,
             IMethodResolver<TypeMirror> methodResolver,
             ExpressionEvaluator<TypeMirror, Value> expressionEvaluator)
             : base(methodResolver, expressionEvaluator)
         {
-            SpecialSymbolHelper = specialSymbolHelper;
+            SpecialSymbolHelper = new SoftSpecialSymbolHelper();
         }
 
         public SoftDebuggerSession Session

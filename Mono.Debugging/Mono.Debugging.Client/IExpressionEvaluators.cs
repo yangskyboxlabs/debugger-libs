@@ -7,6 +7,6 @@ namespace Mono.Debugging.Client
         where TType : class
         where TValue : class
     {
-        ExpressionEvaluator<TType, TValue> GetEvaluator(EvaluationContext context);
+        IExpressionEvaluator<TType, TValue> GetEvaluator(EvaluationContext context);
     }
 }
