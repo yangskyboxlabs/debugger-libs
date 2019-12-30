@@ -23,6 +23,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#if false
 using System;
 using System.Collections.Generic;
 
@@ -183,3 +184,4 @@ namespace Mono.Debugging.Evaluation
 		#endregion SimpleType
 	}
 }
+#endif

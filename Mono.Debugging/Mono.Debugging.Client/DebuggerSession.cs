@@ -1012,7 +1012,8 @@ namespace Mono.Debugging.Client
 		}
 		
 		readonly Dictionary<string, IExpressionEvaluator> evaluators = new Dictionary<string, IExpressionEvaluator> ();
-		readonly ExpressionEvaluator defaultResolver = new NRefactoryExpressionEvaluator ();
+		//readonly ExpressionEvaluator defaultResolver = new NRefactoryExpressionEvaluator ();
+		readonly ExpressionEvaluator defaultResolver = new RoselynExpressionEvaluator ();
 
 		internal IExpressionEvaluator FindExpressionEvaluator (StackFrame frame)
 		{
