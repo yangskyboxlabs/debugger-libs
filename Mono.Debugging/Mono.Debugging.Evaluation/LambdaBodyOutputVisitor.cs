@@ -1,3 +1,4 @@
+#if false
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -820,3 +821,4 @@ namespace Mono.Debugging.Evaluation
 		#endregion
 	}
 }
+#endif
