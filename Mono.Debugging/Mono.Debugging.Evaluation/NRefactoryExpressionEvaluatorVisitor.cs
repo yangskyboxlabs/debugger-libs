@@ -23,6 +23,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#if false
 using System;
 using System.Linq;
 using System.Reflection;
@@ -1679,3 +1680,4 @@ namespace Mono.Debugging.Evaluation
 		#endregion
 	}
 }
+#endif

@@ -13,7 +13,7 @@
     <ProjectReference Include="..\Mono.Debugger.Soft\Mono.Debugger.Soft.csproj" />
   </ItemGroup>
   <PropertyGroup>
-    <NuGetVersionRoslyn Condition="$(NuGetVersionRoslyn) == ''">2.10.0</NuGetVersionRoslyn>
+    <NuGetVersionRoslyn Condition="$(NuGetVersionRoslyn) == ''">3.4.0</NuGetVersionRoslyn>
     <NuGetVersionCecil Condition="$(NuGetVersionCecil) == ''">0.10.1</NuGetVersionCecil>
   </PropertyGroup>
   <ItemGroup>
