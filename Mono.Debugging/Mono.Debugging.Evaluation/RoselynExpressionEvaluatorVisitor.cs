@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -23,13 +24,16 @@ namespace Mono.Debugging.Evaluation
 
         public Dictionary<string, ValueReference> UserVariables { get; }
         public EvaluationContext Context { get; }
+        public SemanticModel SemanticModel { get; }
+
         public TypeResolverHandler TypeResolver { get; }
 
         private ObjectValueAdaptor Adapter => this.Context.Adapter;
 
-        public RoselynExpressionEvaluatorVisitor(EvaluationContext context, TypeResolverHandler typeResolver, Dictionary<string, ValueReference> userVariables)
+        public RoselynExpressionEvaluatorVisitor(EvaluationContext context, SemanticModel semanticModel, TypeResolverHandler typeResolver, Dictionary<string, ValueReference> userVariables)
         {
             this.Context = context;
+            this.SemanticModel = semanticModel;
             this.TypeResolver = typeResolver;
             this.UserVariables = userVariables;
         }
@@ -450,6 +454,42 @@ namespace Mono.Debugging.Evaluation
             var name = node.Identifier.ValueText;
             string fullName;
             ValueReference memberRef;
+            object val;
+
+            var typeInfo = this.SemanticModel.GetTypeInfo(node);
+            Console.WriteLine($"!! -> identifier {name} is type {typeInfo.Type?.Kind}");
+
+            switch (typeInfo.Type) {
+                case IErrorTypeSymbol error:
+                    Console.WriteLine($"!!  -> could not resolve identifier {name}");
+                    break;
+                case INamedTypeSymbol namedType:
+                    Console.WriteLine($"!! -> identifier {name} is type: {namedType.Name}");
+                    fullName = namedType.ContainingNamespace.IsGlobalNamespace
+                        ? namedType.Name
+                        : $"{namedType.ContainingNamespace.Name}.{namedType.Name}";
+
+                    Console.WriteLine($"!!  -> {fullName}");
+                    if (this.TryGetType(fullName, out val)) {
+                        return new TypeValueReference(this.Context, val);
+                    }
+                    break;
+            }
+
+            var symbolInfo = this.SemanticModel.GetSymbolInfo(node);
+            Console.WriteLine($"!! identifier {name} is symbol {symbolInfo.Symbol?.Kind}");
+
+            switch (symbolInfo.Symbol) {
+                case INamespaceSymbol nsSymbol:
+                Console.WriteLine($"!! identifier {name} is namespace: {nsSymbol.Name}");
+                    return new NamespaceValueReference(this.Context, nsSymbol.Name);
+            }
+
+            if (this.TryGetType(name, out val)) {
+                return new TypeValueReference(this.Context, val);
+            }
+
+            throw new EvaluatorException("debug");
 
             if (this.LookupContext.Parent != null) {
                 var parent = this.LookupContext.Parent;

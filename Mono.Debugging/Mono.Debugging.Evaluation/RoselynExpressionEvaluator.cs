@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -23,17 +24,41 @@ namespace Mono.Debugging.Evaluation
 
             var ast = CSharpSyntaxTree.ParseText(expression, options: parseOptions);
 
+            var mscorlib = MetadataReference.CreateFromFile(typeof(object).Assembly.Location);
+            var compilation = CSharpCompilation.CreateScriptCompilation("eval", ast,
+                references: new[] {
+                    mscorlib,
+                });
+            var semanticModel = compilation.GetSemanticModel(ast);
+
             if (!ast.HasCompilationUnitRoot) {
                 throw new EvaluatorException("Couldn't evaluate expression");
             }
 
-            var visitor = new RoselynExpressionEvaluatorVisitor(context, this.TypeResolver, this.UserVariables);
+            var executableScript = ast.GetCompilationUnitRoot()
+                .Accept(new ExecutableScriptRewriter(context, semanticModel))
+                .ToString();
+
+            Console.WriteLine($"!! transformed: {executableScript}");
+
+            var script = CSharpScript.Create(executableScript, globalsType: typeof(SdbScriptExecutionContext));
+            var sdbContext = new SdbScriptExecutionContext(context);
+            var state = script.RunAsync(sdbContext);
+            state.Wait();
+
+            return state.Result.ReturnValue as ValueReference;
+
+/*
+            var visitor = new RoselynExpressionEvaluatorVisitor(context, semanticModel, this.TypeResolver, this.UserVariables);
             return ast.GetCompilationUnitRoot().Accept(visitor);
+            */
         }
 
         public override string Resolve(DebuggerSession session, SourceLocation location, string expression)
         {
-            return expression;
+            var visitor = new RoselynExpressionResolverVisitor(session.TypeResolverHandler);
+            var tree = CSharpSyntaxTree.ParseText(expression, new CSharpParseOptions(kind: SourceCodeKind.Script));
+            return tree.GetCompilationUnitRoot().Accept(visitor).ToFullString();
         }
 
         public void UseTypeResolver(TypeResolverHandler resolver)
