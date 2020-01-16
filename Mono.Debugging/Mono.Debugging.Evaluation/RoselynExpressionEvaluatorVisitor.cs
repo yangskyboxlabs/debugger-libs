@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -23,13 +24,16 @@ namespace Mono.Debugging.Evaluation
 
         public Dictionary<string, ValueReference> UserVariables { get; }
         public EvaluationContext Context { get; }
+        public SemanticModel SemanticModel { get; }
+
         public TypeResolverHandler TypeResolver { get; }
 
         private ObjectValueAdaptor Adapter => this.Context.Adapter;
 
-        public RoselynExpressionEvaluatorVisitor(EvaluationContext context, TypeResolverHandler typeResolver, Dictionary<string, ValueReference> userVariables)
+        public RoselynExpressionEvaluatorVisitor(EvaluationContext context, SemanticModel semanticModel, TypeResolverHandler typeResolver, Dictionary<string, ValueReference> userVariables)
         {
             this.Context = context;
+            this.SemanticModel = semanticModel;
             this.TypeResolver = typeResolver;
             this.UserVariables = userVariables;
         }
@@ -74,7 +78,6 @@ namespace Mono.Debugging.Evaluation
             Console.WriteLine($"!! -> trying type {name}");
             typeObject = this.Context.Adapter.GetType(this.Context, name);
             if (typeObject != null) {
-                Console.WriteLine($"!! Force loading {this.Context.Adapter.GetTypeName(this.Context, typeObject)}");
                 this.Context.Adapter.ForceLoadType(this.Context, typeObject);
                 return true;
             }
@@ -89,12 +92,6 @@ namespace Mono.Debugging.Evaluation
                 return true;
             }
             return false;
-        }
-
-        public bool TryGetIdentifierFullName(string name, out string fullName)
-        {
-            fullName = this.TypeResolver?.Invoke(name, null);
-            return fullName != null;
         }
 
         public object ResolveType(ExpressionSyntax node)
@@ -359,14 +356,16 @@ namespace Mono.Debugging.Evaluation
         {
             var parentRef = this.LookupContext.Parent;
 
-            Console.WriteLine($"!! generic name: {node.Identifier.ValueText}");
+            Console.WriteLine($"!! -> generic name: {node.Identifier.ValueText}");
 
             var typeArguments = node.TypeArgumentList.Arguments
-                .Select(ta => this.ResolveType(ta))
+                //.Select(ta => this.ResolveType(ta))
+                .Select(ta => ta.Accept(this).Type)
                 .ToArray();
 
-            var typeName = $"{node.Identifier.ValueText}`{typeArguments.Length}";
+            var typeName = $"{node.Identifier.ValueText}`{node.Arity}";
 
+/*
             switch (parentRef) {
                 case NamespaceValueReference namespacePrefix:
                     typeName = $"{namespacePrefix.CallToString()}.{typeName}";
@@ -404,6 +403,7 @@ namespace Mono.Debugging.Evaluation
                     }
                     break;
             }
+            */
 
             if (this.TryGetType(typeName, typeArguments, out var type)) {
                 return new TypeValueReference(this.Context, type);
@@ -450,8 +450,35 @@ namespace Mono.Debugging.Evaluation
             var name = node.Identifier.ValueText;
             string fullName;
             ValueReference memberRef;
+            ValueReference resolved;
+            object val;
 
-            if (this.LookupContext.Parent != null) {
+            Console.WriteLine($"!! -> identifier: {node.ToString()}");
+
+            var symbolInfo = this.SemanticModel.GetSymbolInfo(node);
+
+            if (this.TryResolveAsSymbol(symbolInfo, node, out resolved)) {
+                return resolved;
+            }
+
+/*
+            if (this.TryResolveAsType(node, out resolved)) {
+                return resolved;
+            }
+            */
+
+/*
+            var symbolInfo = this.SemanticModel.GetSymbolInfo(node);
+            Console.WriteLine($"!! identifier {name} is symbol {symbolInfo.Symbol?.Kind}");
+
+            switch (symbolInfo.Symbol) {
+                case INamespaceSymbol nsSymbol:
+                Console.WriteLine($"!! identifier {name} is namespace: {nsSymbol.Name}");
+                    return new NamespaceValueReference(this.Context, nsSymbol.Name);
+            }
+            */
+
+            if (false/*this.LookupContext.Parent != null*/) {
                 var parent = this.LookupContext.Parent;
                 switch (parent) {
                     case NamespaceValueReference namespaceRef:
@@ -482,19 +509,6 @@ namespace Mono.Debugging.Evaluation
                 return null;
             }
             else {
-                // Try type resolution table
-                if (this.TryGetIdentifierFullName(name, out fullName)) {
-                    //Console.WriteLine($"!! -> name in identifier table: {name} -> {fullName}");
-                    // Apparently 'System' can appear in the identifier table: it's not a type
-                    if (name == "System") {
-                        return new NamespaceValueReference(this.Context, name);
-                    }
-
-                    if (this.TryGetType(fullName, out var typeObj)) {
-                        return new TypeValueReference(this.Context, typeObj);
-                    }
-                }
-
                 // Try user defined variables
                 if (this.UserVariables.TryGetValue(name, out var valueRef)) {
                     return valueRef;
@@ -620,13 +634,53 @@ namespace Mono.Debugging.Evaluation
 
         public override ValueReference VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
         {
+            Console.WriteLine($"!! -> VisitMemberAccess... {node.Name}");
+            ValueReference resolved;
+            var symbolInfo = this.SemanticModel.GetSymbolInfo(node);
+
+            Console.WriteLine($"!!  -> symbol: {symbolInfo.Symbol?.Kind}");
+
+            if ((symbolInfo.Symbol is ITypeSymbol) && this.TryResolveAsSymbol(symbolInfo, node.Name, out resolved)) {
+                return resolved;
+            }
+
+            Console.WriteLine($"!!  -> brute-force...");
             var parent = node.Expression.Accept(this);
 
+            if (this.TryResolveAsSymbol(symbolInfo, node.Name, parent, out resolved)) {
+                return resolved;
+            }
+
             if (parent ==  null) {
-                throw new Exception($"!!  Could not find member parent '{node.Expression.ToString()}' ({node.Expression.Kind()})");
+                throw new EvaluatorException($"Could not resolve parent of '{node}'");
+            }
+
+            if (parent is NamespaceValueReference) {
+                if (this.TryResolveAsType(node.Expression.ToString(), node.Name, out resolved)) {
+                    return resolved;
+                }
+                else {
+                    return new NamespaceValueReference(this.Context, node.ToString());
+                }
             }
 
             this.LookupContext.Parent = parent;
+
+            Console.WriteLine($"!!  -> parent: {parent.GetType()}");
+            switch (parent) {
+                case TypeValueReference typeParent:
+                    // Nested type?
+                    Console.WriteLine($"!!  -> trying nested type of {this.Context.Adapter.GetTypeName(this.Context, parent.Type)}");
+                    if (this.TryResolveAsNestedType(typeParent, node.Name, out resolved)) {
+                        return resolved;
+                    }
+                    break;
+                default:
+                    if (this.TryGetMember(parent, node.Name.Identifier.Text, out resolved)) {
+                        return resolved;
+                    }
+                    break;
+            }
 
             return node.Name.Accept(this);
         }
@@ -660,21 +714,14 @@ namespace Mono.Debugging.Evaluation
 
         public override ValueReference VisitPredefinedType(PredefinedTypeSyntax node)
         {
-            var name = node.Keyword.ValueText;
-            if (!PredefinedTypesMap.TryGetValue(node.Keyword.ValueText, out var fullName)) {
-                var t = CSharpScript.EvaluateAsync<string>($"typeof({name}).FullName");
-                t.Wait();
-                fullName = t.Result;
-                PredefinedTypesMap[node.Keyword.ValueText] = fullName;
-            }
-
+            var typeInfo = this.SemanticModel.GetTypeInfo(node);
+            var fullName = typeInfo.Type.GetFullMetadataName();
             return new TypeValueReference(this.Context, this.Context.Adapter.GetType(this.Context, fullName));
         }
-        private static Dictionary<string, string> PredefinedTypesMap = new Dictionary<string, string>();
 
         public override ValueReference VisitPostfixUnaryExpression(PostfixUnaryExpressionSyntax node)
         {
-            return null;
+            throw new EvaluatorException("postfix unary not supported");
         }
 
         public override ValueReference VisitPrefixUnaryExpression(PrefixUnaryExpressionSyntax node)
@@ -748,5 +795,168 @@ namespace Mono.Debugging.Evaluation
 
             throw new EvaluatorException($"Could not resolve '{node.Type.ToString()}' to a known type");
         }
+
+        private bool TryResolveAsNestedType(TypeValueReference parent, SimpleNameSyntax nameNode, out ValueReference resolved)
+        {
+            var name = nameNode.Identifier.Text;
+            var genericName = nameNode as GenericNameSyntax;
+
+            if (genericName != null) {
+                name = $"{name}`{genericName.Arity}";
+            }
+
+            var nestedTypes = this.Context.Adapter
+                .GetNestedTypes(this.Context, parent.Type)
+                .ToList();
+
+            Console.WriteLine($"!!  -> nested types: {nestedTypes.Count}");
+            foreach (var nested in nestedTypes) {
+                var nestedName = this.Context.Adapter.GetTypeName(this.Context, nested);
+                Console.WriteLine($"!!  -> nested type: {nestedName}");
+
+                if (nestedName.EndsWith($"+{name}")) {
+                    if (genericName != null) {
+                        var typeArguments = this.Context.Adapter
+                            .GetGenericTypeArguments(this.Context, parent.Type)
+                            .Concat(genericName.TypeArgumentList.Arguments.Select(ta => ta.Accept(this).Type))
+                            .ToArray();
+
+                        if (this.TryGetType(nestedName, typeArguments, out var typeObj)) {
+                            resolved = new TypeValueReference(this.Context, nested);
+                        }
+                        else {
+                            Console.Write($"!!  -> ???");
+                            resolved = null;
+                            return false;
+                        }
+                    }
+                    else {
+                        resolved = new TypeValueReference(this.Context, nested);
+                        return true;
+                    }
+                }
+            }
+
+            // Brute-force nested type
+            var forcedName = $"Thing`1+{name}";
+            Console.WriteLine($"!!  -> try forcing nested name {forcedName}");
+            var tas = this.Context.Adapter
+                .GetGenericTypeArguments(this.Context, parent.Type)
+                .Concat(genericName.TypeArgumentList.Arguments.Select(ta => ta.Accept(this).Type))
+                .ToArray();
+
+            Console.WriteLine($"!!  -> type args: {string.Join(",",tas.Select(t => this.Context.Adapter.GetTypeName(this.Context, t)))}");
+
+            if (this.TryGetType(forcedName, tas, out var o)) {
+                resolved = new TypeValueReference(this.Context, o);
+                return true;
+            }
+
+            resolved = null;
+            return false;
+        }
+
+        private bool TryResolveAsSymbol(SymbolInfo symbolInfo, SimpleNameSyntax nameNode, out ValueReference resolved)
+            => this.TryResolveAsSymbol(symbolInfo, nameNode, null, out resolved);
+
+        private bool TryResolveAsSymbol(SymbolInfo symbolInfo, SimpleNameSyntax nameNode, ValueReference parent, out ValueReference resolved)
+        {
+            ISymbol symbol = symbolInfo.Symbol;
+            switch (symbol) {
+                case IPropertySymbol propertySymbol:
+                case IFieldSymbol fieldSymbol:
+                    Console.WriteLine($"!!  -> member symbol: {symbol.Name}");
+                    return this.TryGetMember(parent, symbol.Name, out resolved);
+            }
+
+            if (symbolInfo.CandidateReason != CandidateReason.None) {
+                var candidates = symbolInfo.CandidateSymbols;
+                Console.WriteLine($"!!  -> {candidates.Length} candidates ({symbolInfo.CandidateReason})");
+
+                // If the only candidate was rejected because it's not a value, we can still resolve to it
+                if (candidates.Length == 1 && symbolInfo.CandidateReason == CandidateReason.NotAValue) {
+                    symbol = candidates[0];
+                    switch (symbol) {
+                        case ITypeSymbol typeSymbol:
+                            resolved = this.GetTypeValueReference(
+                                typeSymbol,
+                                (nameNode as GenericNameSyntax)?.TypeArgumentList.Arguments);
+                            return true;
+                    }
+                }
+                else {
+                    throw new EvaluatorException($"Unresolvable symbol: {nameNode}");
+                }
+            }
+
+            resolved = null;
+            return false;
+        }
+
+        private bool TryResolveAsType(SimpleNameSyntax nameNode, out ValueReference resolved)
+            => this.TryResolveAsType(null, nameNode, out resolved);
+
+        private bool TryResolveAsType(string parent, SimpleNameSyntax nameNode, out ValueReference resolved)
+        {
+            Console.WriteLine($"!!  -> TryResolveAsType");
+            var fullName = parent != null
+                ? $"{parent}.{nameNode.Identifier.Text}"
+                : nameNode.Identifier.Text;
+
+            var typeArguments = (nameNode as GenericNameSyntax)?.TypeArgumentList.Arguments
+                .Select(t => t.Accept(this).Type)
+                .ToArray();
+
+            if (typeArguments != null) {
+                if (this.TryGetType(fullName, typeArguments, out var typeObj)) {
+                    resolved = new TypeValueReference(this.Context, typeObj);
+                    return true;
+                }
+            }
+            else {
+                if (this.TryGetType(fullName, out var typeObj)) {
+                    resolved = new TypeValueReference(this.Context, typeObj);
+                    return true;
+                }
+            }
+
+            // TODO: Generic
+
+            resolved = null;
+            return false;
+        }
+
+        private TypeValueReference GetTypeValueReference(ITypeSymbol symbol, IEnumerable<TypeSyntax> typeArguments = null)
+        {
+            var fullName = symbol.GetFullMetadataName();
+            object typeObject;
+
+            if (typeArguments == null) {
+                if (!this.TryGetType(fullName, out typeObject)) {
+                    throw new EvaluatorException($"Unresolvable type: {fullName}");
+                }
+            }
+            else {
+                var types = typeArguments
+                    .Select(t => t.Accept(this).Type)
+                    .ToArray();
+
+                //Console.WriteLine($"!!  -> types: {string.Join(",",types.Select(t => this.Context.Adapter.GetTypeName(this.Context, t)))}");
+
+                if (!this.TryGetType(fullName, types, out typeObject)) {
+                    throw new EvaluatorException($"Unresolvable type: {fullName}");
+                }
+            }
+
+            return new TypeValueReference(this.Context, typeObject);
+        }
+    }
+
+    internal static class SymbolExtensions
+    {
+        public static string GetFullMetadataName(this ISymbol symbol)
+            => symbol.ContainingNamespace.IsGlobalNamespace
+                ? symbol.MetadataName
+                : $"{symbol.ContainingNamespace.GetFullMetadataName()}.{symbol.MetadataName}";
     }
 }

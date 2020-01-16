@@ -24,11 +24,17 @@ namespace Mono.Debugging.Evaluation
 
             var ast = CSharpSyntaxTree.ParseText(expression, options: parseOptions);
 
+            var mscorlib = MetadataReference.CreateFromFile(typeof(object).Assembly.Location);
+            var compilation = CSharpCompilation.CreateScriptCompilation("eval", ast,
+                references: new[] {
+                    mscorlib,
+                });
+            var semanticModel = compilation.GetSemanticModel(ast);
+
             if (!ast.HasCompilationUnitRoot) {
                 throw new EvaluatorException("Couldn't evaluate expression");
             }
-
-            var visitor = new RoselynExpressionEvaluatorVisitor(context, this.TypeResolver, this.UserVariables);
+            var visitor = new RoselynExpressionEvaluatorVisitor(context, semanticModel, this.TypeResolver, this.UserVariables);
             return ast.GetCompilationUnitRoot().Accept(visitor);
         }
 
