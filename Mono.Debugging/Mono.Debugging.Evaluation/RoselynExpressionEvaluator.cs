@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -33,7 +34,9 @@ namespace Mono.Debugging.Evaluation
 
         public override string Resolve(DebuggerSession session, SourceLocation location, string expression)
         {
-            return expression;
+            var visitor = new RoselynExpressionResolverVisitor(session.TypeResolverHandler);
+            var tree = CSharpSyntaxTree.ParseText(expression, new CSharpParseOptions(kind: SourceCodeKind.Script));
+            return tree.GetCompilationUnitRoot().Accept(visitor).ToFullString();
         }
 
         public void UseTypeResolver(TypeResolverHandler resolver)
