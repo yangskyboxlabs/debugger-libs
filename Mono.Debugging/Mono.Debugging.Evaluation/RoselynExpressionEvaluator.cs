@@ -40,6 +40,10 @@ namespace Mono.Debugging.Evaluation
 
         public override string Resolve(DebuggerSession session, SourceLocation location, string expression)
         {
+            if (session.TypeResolverHandler == null) {
+                return expression;
+            }
+
             var visitor = new RoselynExpressionResolverVisitor(session.TypeResolverHandler);
             var tree = CSharpSyntaxTree.ParseText(expression, new CSharpParseOptions(kind: SourceCodeKind.Script));
             return tree.GetCompilationUnitRoot().Accept(visitor).ToFullString();

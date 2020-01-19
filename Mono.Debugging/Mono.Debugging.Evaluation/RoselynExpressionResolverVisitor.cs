@@ -13,7 +13,7 @@ namespace Mono.Debugging.Evaluation
 
         public RoselynExpressionResolverVisitor(TypeResolverHandler typeResolver)
         {
-            this.TypeResolver = typeResolver;
+            this.TypeResolver = typeResolver ?? throw new ArgumentNullException(nameof(typeResolver));
         }
 
         public override SyntaxNode VisitGenericName(GenericNameSyntax node)
