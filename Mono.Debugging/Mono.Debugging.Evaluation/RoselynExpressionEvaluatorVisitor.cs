@@ -7,6 +7,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Mono.Debugging.Client;
+using Mono.Debugging.Evaluation.Roselyn;
 
 namespace Mono.Debugging.Evaluation
 {
@@ -17,6 +18,8 @@ namespace Mono.Debugging.Evaluation
             public bool WantTypeResult;
             public ValueReference Parent;
         }
+
+        TypeExpressionVisitor typeVisitor;
 
         private Stack<ResolutionContext> ContextStack = new Stack<ResolutionContext>();
 
@@ -36,6 +39,8 @@ namespace Mono.Debugging.Evaluation
             this.SemanticModel = semanticModel;
             this.TypeResolver = typeResolver;
             this.UserVariables = userVariables;
+
+            typeVisitor = new TypeExpressionVisitor (context, semanticModel);
         }
 
         private object GetEnclosingType()
@@ -95,21 +100,7 @@ namespace Mono.Debugging.Evaluation
         }
 
         public object ResolveType(ExpressionSyntax node)
-        {
-            this.ContextStack.Push(new ResolutionContext {
-                WantTypeResult = true,
-            });
-
-            Console.WriteLine($"!! -> new type resolution context");
-
-            Console.WriteLine($"!!  -> {node.Kind()}");
-            var r = node.Accept(this);
-
-            this.ContextStack.Pop();
-
-            Console.WriteLine($"!! <- end type resolution context");
-            return r.Type;
-        }
+            => node.Accept(typeVisitor)?.Type;
 
         public override ValueReference VisitArgument(ArgumentSyntax node)
         {
@@ -345,17 +336,25 @@ namespace Mono.Debugging.Evaluation
 
         public override ValueReference VisitExpressionStatement(ExpressionStatementSyntax node)
         {
-            Console.WriteLine($"!! -> {node.Expression.Kind()}");
-            this.ContextStack.Push(new ResolutionContext());
+            //Console.WriteLine($"!! -> {node.Expression.Kind()}");
+            //this.ContextStack.Push(new ResolutionContext());
             var r = node.Expression.Accept(this);
-            this.ContextStack.Pop();
+
+            // If regular evaluation returns null, try as type expression
+            if (r == null) {
+                switch (node.Expression) {
+                case MemberAccessExpressionSyntax memberAccess:
+                case SimpleNameSyntax name:
+                    r = node.Expression.Accept (typeVisitor);
+                    break;
+                }
+            }
+            //this.ContextStack.Pop();
             return r;
         }
 
         public override ValueReference VisitGenericName(GenericNameSyntax node)
         {
-            var parentRef = this.LookupContext.Parent;
-
             Console.WriteLine($"!! -> generic name: {node.Identifier.ValueText}");
 
             var typeArguments = node.TypeArgumentList.Arguments
@@ -364,46 +363,6 @@ namespace Mono.Debugging.Evaluation
                 .ToArray();
 
             var typeName = $"{node.Identifier.ValueText}`{node.Arity}";
-
-/*
-            switch (parentRef) {
-                case NamespaceValueReference namespacePrefix:
-                    typeName = $"{namespacePrefix.CallToString()}.{typeName}";
-                    break;
-                case TypeValueReference parentTypeRef:
-                    var parentType = parentTypeRef.Type;
-                    if (this.Context.Adapter.IsGenericType(this.Context, parentTypeRef.Type)) {
-                        var parentName = this.Context.Adapter.GetTypeName(this.Context, parentType);
-                        parentName = parentName.Substring(0, parentName.IndexOf('['));
-                        typeName = $"{parentName}.{typeName}";
-
-                        var combinedTypeArguments = this.Context.Adapter
-                            .GetTypeArgs(this.Context, parentTypeRef.Type)
-                            .Concat(typeArguments)
-                            .ToArray();
-
-                        var aa = combinedTypeArguments
-                            .Select(a => this.Context.Adapter.GetTypeName(this.Context, a));
-
-                        Console.WriteLine($"!!   -> trying: {typeName} [{string.Join(",", aa)}]");
-
-                        if (this.TryGetType(typeName, combinedTypeArguments, out var t)) {
-                            return new TypeValueReference(this.Context, t);
-                        }
-                    }
-                    else {
-                        typeName = $"{parentTypeRef.CallToString()}.{typeName}";
-                    }
-                    break;
-                case null:
-                    // Try type resolution table
-                    if (this.TryGetIdentifierFullName(typeName, out var fullName)) {
-                        Console.WriteLine($"!! -> name in identifier table: {typeName} -> {fullName}");
-                        typeName = $"{fullName}`{typeArguments.Length}";
-                    }
-                    break;
-            }
-            */
 
             if (this.TryGetType(typeName, typeArguments, out var type)) {
                 return new TypeValueReference(this.Context, type);
@@ -417,7 +376,7 @@ namespace Mono.Debugging.Evaluation
                 }
             }
 
-            throw new EvaluatorException($"Could not resolve type '{typeName}'");
+            return null;
         }
 
         public override ValueReference VisitGlobalStatement(GlobalStatementSyntax node)
@@ -478,134 +437,72 @@ namespace Mono.Debugging.Evaluation
             }
             */
 
-            if (false/*this.LookupContext.Parent != null*/) {
-                var parent = this.LookupContext.Parent;
-                switch (parent) {
-                    case NamespaceValueReference namespaceRef:
-                        var parentNamespace = namespaceRef.CallToString();
-                        if (this.TryGetType($"{parentNamespace}.{name}", out var type)) {
-                            return new TypeValueReference(this.Context, type);
-                        }
-                        // Assume it's a namespace
-                        return new NamespaceValueReference(this.Context, $"{parentNamespace}.{name}");
-                    case TypeValueReference typeRef:
-                        if (this.TryGetMember(typeRef, name, out memberRef)) {
-                            return memberRef;
-                        }
-                        // Try nested classes
-                        var nestedClasses = this.Context.Adapter.GetNestedTypes(this.Context, typeRef.Type);
-                        foreach (var nested in nestedClasses) {
-                            if (this.Context.Adapter.GetTypeName(this.Context, nested).EndsWith($"+{name}")) {
-                                return new TypeValueReference(this.Context, nested);
-                            }
-                        }
-                        break;
-                    default:
-                        if (this.TryGetMember(parent, name, out memberRef)) {
-                            return memberRef;
-                        }
-                        break;
-                }
-                return null;
+            // Try user defined variables
+            if (this.UserVariables.TryGetValue(name, out var valueRef)) {
+                return valueRef;
             }
-            else {
-                // Try user defined variables
-                if (this.UserVariables.TryGetValue(name, out var valueRef)) {
-                    return valueRef;
+
+            // Try local variables
+            valueRef = this.Context.Adapter.GetLocalVariable(this.Context, name);
+            if (valueRef != null) {
+                return valueRef;
+            }
+
+            // Try parameters
+            valueRef = this.Context.Adapter.GetParameter(this.Context, name);
+            if (valueRef != null) {
+                return valueRef;
+            }
+
+            // Try implicit `this`
+            if (this.TryGetThisReference(out var thisRef)) {
+                // First try enclosing type
+                if (this.TryGetMember(thisRef, this.GetEnclosingType(), name, out var member)) {
+                    return member;
                 }
 
-                // Try local variables
-                valueRef = this.Context.Adapter.GetLocalVariable(this.Context, name);
-                if (valueRef != null) {
-                    return valueRef;
-                }
-
-                // Try parameters
-                valueRef = this.Context.Adapter.GetParameter(this.Context, name);
-                if (valueRef != null) {
-                    return valueRef;
-                }
-
-                // Try implicit `this`
-                if (this.TryGetThisReference(out var thisRef)) {
-                    // First try enclosing type
-                    if (this.TryGetMember(thisRef, this.GetEnclosingType(), name, out var member)) {
-                        return member;
-                    }
-
-                    if (this.TryGetMember(thisRef, name, out member)) {
-                        return member;
-                    }
-                }
-
-                var enclosingType = this.GetEnclosingType();
-
-                for (var vtype = enclosingType; vtype != null;) {
-                    Console.WriteLine($"!!  -> checking in {this.Context.Adapter.GetTypeName(this.Context, vtype)}");
-                    if (this.TryGetStaticMember(vtype, name, out var member)) {
-                        return member;
-                    }
-
-                    var nestedClasses = this.Context.Adapter.GetNestedTypes(this.Context, vtype);
-                    foreach (var nested in nestedClasses) {
-                        Console.WriteLine($"!!  -> nested class: {this.Context.Adapter.GetTypeName(this.Context, nested)}");
-                        if (this.Context.Adapter.GetTypeName(this.Context, nested).EndsWith($"+{name}")) {
-                            return new TypeValueReference(this.Context, nested);
-                        }
-                    }
-
-                    vtype = this.Context.Adapter.GetParentType(this.Context, vtype);
-                }
-
-                for (var vtype = this.Context.Adapter.GetBaseType(this.Context, enclosingType); vtype != null;) {
-                    Console.WriteLine($"!!  -> checking in {this.Context.Adapter.GetTypeName(this.Context, vtype)}");
-                    if (this.TryGetStaticMember(vtype, name, out var member)) {
-                        return member;
-                    }
-
-                    var nestedClasses = this.Context.Adapter.GetNestedTypes(this.Context, vtype);
-                    foreach (var nested in nestedClasses) {
-                        Console.WriteLine($"!!  -> nested class: {this.Context.Adapter.GetTypeName(this.Context, nested)}");
-                        if (this.Context.Adapter.GetTypeName(this.Context, nested).EndsWith($"+{name}")) {
-                            return new TypeValueReference(this.Context, nested);
-                        }
-                    }
-
-                    vtype = this.Context.Adapter.GetBaseType(this.Context, vtype);
-                }
-
-                object typeObject;
-                fullName = name;
-                
-                // Try as type
-                if (this.TryGetType(name, out typeObject)) {
-                    return new TypeValueReference(this.Context, typeObject);
-                }
-
-                // Try subtype of enclosing type
-                fullName = $"{this.Context.Adapter.GetTypeName(this.Context, enclosingType)}.{name}";
-                if (this.TryGetType(fullName, out typeObject)) {
-                    return new TypeValueReference(this.Context, typeObject);
-                }
-
-                // Try as namespace or type in imported namespace
-                foreach (var ns in this.Context.Adapter.GetImportedNamespaces(this.Context)) {
-                    fullName = $"{ns}.{name}";
-                    if (this.TryGetType(fullName, out typeObject)) {
-                        return new TypeValueReference(this.Context, typeObject);
-                    }
-
-                    var nsParts = ns.Split('.').ToList();
-                    var partIndex = nsParts.IndexOf(name);
-                    if (partIndex >= 0) {
-                        fullName = string.Join(".", nsParts.Take(partIndex + 1));
-                        Console.WriteLine($"!!  -> found namespace: {fullName}");
-                        return new NamespaceValueReference(this.Context, fullName);
-                    }
+                if (this.TryGetMember(thisRef, name, out member)) {
+                    return member;
                 }
             }
 
-            throw new EvaluatorException($"Could not resolve identifier {name}");
+            var enclosingType = this.GetEnclosingType();
+
+            for (var vtype = enclosingType; vtype != null;) {
+                Console.WriteLine($"!!  -> checking in {this.Context.Adapter.GetTypeName(this.Context, vtype)}");
+                if (this.TryGetStaticMember(vtype, name, out var member)) {
+                    return member;
+                }
+
+                var nestedClasses = this.Context.Adapter.GetNestedTypes(this.Context, vtype);
+                foreach (var nested in nestedClasses) {
+                    Console.WriteLine($"!!  -> nested class: {this.Context.Adapter.GetTypeName(this.Context, nested)}");
+                    if (this.Context.Adapter.GetTypeName(this.Context, nested).EndsWith($"+{name}")) {
+                        return new TypeValueReference(this.Context, nested);
+                    }
+                }
+
+                vtype = this.Context.Adapter.GetParentType(this.Context, vtype);
+            }
+
+            for (var vtype = this.Context.Adapter.GetBaseType(this.Context, enclosingType); vtype != null;) {
+                Console.WriteLine($"!!  -> checking in {this.Context.Adapter.GetTypeName(this.Context, vtype)}");
+                if (this.TryGetStaticMember(vtype, name, out var member)) {
+                    return member;
+                }
+
+                var nestedClasses = this.Context.Adapter.GetNestedTypes(this.Context, vtype);
+                foreach (var nested in nestedClasses) {
+                    Console.WriteLine($"!!  -> nested class: {this.Context.Adapter.GetTypeName(this.Context, nested)}");
+                    if (this.Context.Adapter.GetTypeName(this.Context, nested).EndsWith($"+{name}")) {
+                        return new TypeValueReference(this.Context, nested);
+                    }
+                }
+
+                vtype = this.Context.Adapter.GetBaseType(this.Context, vtype);
+            }
+
+            return null;
         }
 
         public override ValueReference VisitInvocationExpression(InvocationExpressionSyntax node)
@@ -640,40 +537,26 @@ namespace Mono.Debugging.Evaluation
 
             Console.WriteLine($"!!  -> symbol: {symbolInfo.Symbol?.Kind}");
 
+/*
             if ((symbolInfo.Symbol is ITypeSymbol) && this.TryResolveAsSymbol(symbolInfo, node.Name, out resolved)) {
                 return resolved;
             }
 
             Console.WriteLine($"!!  -> brute-force...");
+            */
             var parent = node.Expression.Accept(this);
 
-            if (this.TryResolveAsSymbol(symbolInfo, node.Name, parent, out resolved)) {
-                return resolved;
-            }
-
             if (parent ==  null) {
-                throw new EvaluatorException($"Could not resolve parent of '{node}'");
+                return null;
+                //throw new EvaluatorException($"Could not resolve parent of '{node}'");
             }
 
-            if (parent is NamespaceValueReference) {
-                if (this.TryResolveAsType(node.Expression.ToString(), node.Name, out resolved)) {
-                    return resolved;
-                }
-                else {
-                    return new NamespaceValueReference(this.Context, node.ToString());
-                }
-            }
-
-            this.LookupContext.Parent = parent;
+            //this.LookupContext.Parent = parent;
 
             Console.WriteLine($"!!  -> parent: {parent.GetType()}");
             switch (parent) {
                 case TypeValueReference typeParent:
                     // Nested type?
-                    Console.WriteLine($"!!  -> trying nested type of {this.Context.Adapter.GetTypeName(this.Context, parent.Type)}");
-                    if (this.TryResolveAsNestedType(typeParent, node.Name, out resolved)) {
-                        return resolved;
-                    }
                     break;
                 default:
                     if (this.TryGetMember(parent, node.Name.Identifier.Text, out resolved)) {
@@ -714,9 +597,7 @@ namespace Mono.Debugging.Evaluation
 
         public override ValueReference VisitPredefinedType(PredefinedTypeSyntax node)
         {
-            var typeInfo = this.SemanticModel.GetTypeInfo(node);
-            var fullName = typeInfo.Type.GetFullMetadataName();
-            return new TypeValueReference(this.Context, this.Context.Adapter.GetType(this.Context, fullName));
+            return node.Accept (typeVisitor);
         }
 
         public override ValueReference VisitPostfixUnaryExpression(PostfixUnaryExpressionSyntax node)
