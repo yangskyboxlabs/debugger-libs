@@ -767,8 +767,14 @@ namespace Mono.Debugging.Soft
 			if (PortablePdbData.IsPortablePdb (pdbFileName))
 				return new PortablePdbData (pdbFileName);
 			// Attempt to fetch pdb from the debuggee over the wire
-			var pdbBlob = asm.GetPdbBlob ();
-			return pdbBlob != null ? new PortablePdbData (pdbBlob) : null;
+			try {
+				var pdbBlob = asm.GetPdbBlob ();
+				return pdbBlob != null ? new PortablePdbData (pdbBlob) : null;
+			}
+			catch (NotSupportedException e) {
+				DebuggerLoggingService.LogError(e.Message, e);
+				return null;
+			}
 		}
 
 		internal PortablePdbData GetPdbData (MethodMirror method)
