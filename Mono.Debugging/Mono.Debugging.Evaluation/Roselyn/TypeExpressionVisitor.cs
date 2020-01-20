@@ -148,11 +148,21 @@ namespace Mono.Debugging.Evaluation.Roselyn
 			return null;
 		}
 
-		public override ValueReference VisitPredefinedType(PredefinedTypeSyntax node)
+		public override ValueReference VisitPredefinedType (PredefinedTypeSyntax node)
 		{
 			var typeInfo = SemanticModel.GetTypeInfo (node);
 			return new TypeValueReference (Context,
 				Context.Adapter.GetType (Context, typeInfo.Type.GetFullMetadataName ()));
+		}
+
+		public override ValueReference VisitQualifiedName (QualifiedNameSyntax node)
+		{
+			if (TrySemanticResolve (node, out string fullMetadataName)) {
+				return new TypeValueReference (Context,
+					Context.Adapter.GetType (Context, fullMetadataName));
+			}
+
+			return null;
 		}
 
 		bool TrySemanticResolve (SyntaxNode node, out string fullMetadataName)

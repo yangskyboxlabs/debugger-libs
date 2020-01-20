@@ -26,9 +26,38 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Mono.Debugging.Evaluation.Roselyn {
 	public static class EvaluationContextExtensions {
+		public static IEnumerable<(ValueReference, object)> GetAmbientValues (this EvaluationContext context)
+		{
+			// implicit this
+			var thisRef = context.Adapter.GetThisReference (context);
+			if (thisRef != null) {
+				yield return (thisRef, context.Adapter.GetEnclosingType (context));
+				yield return (thisRef, thisRef.Type);
+			}
+
+			// enclosing type and its parents
+			var enclosingType = context.Adapter.GetEnclosingType (context);
+            for (var vtype = enclosingType; vtype != null;) {
+				yield return (null, vtype);
+
+/*
+                var nestedClasses = this.Context.Adapter.GetNestedTypes(this.Context, vtype);
+                foreach (var nested in nestedClasses) {
+                    Console.WriteLine($"!!  -> nested class: {this.Context.Adapter.GetTypeName(this.Context, nested)}");
+                    if (this.Context.Adapter.GetTypeName(this.Context, nested).EndsWith($"+{name}")) {
+                        return new TypeValueReference(this.Context, nested);
+                    }
+                }
+				*/
+
+                vtype = context.Adapter.GetParentType (context, vtype);
+            }
+		}
+
 		public static bool TryGetNestedClass (this EvaluationContext context,
 			TypeValueReference parent, string name,
 			out object nestedType,

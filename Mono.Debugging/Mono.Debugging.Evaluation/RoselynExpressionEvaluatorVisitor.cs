@@ -359,7 +359,7 @@ namespace Mono.Debugging.Evaluation
 
             var typeArguments = node.TypeArgumentList.Arguments
                 //.Select(ta => this.ResolveType(ta))
-                .Select(ta => ta.Accept(this).Type)
+                .Select(ta => ta.Accept (typeVisitor).Type)
                 .ToArray();
 
             var typeName = $"{node.Identifier.ValueText}`{node.Arity}";
@@ -407,10 +407,7 @@ namespace Mono.Debugging.Evaluation
         public override ValueReference VisitIdentifierName(IdentifierNameSyntax node)
         {
             var name = node.Identifier.ValueText;
-            string fullName;
-            ValueReference memberRef;
             ValueReference resolved;
-            object val;
 
             Console.WriteLine($"!! -> identifier: {node.ToString()}");
 
@@ -419,23 +416,6 @@ namespace Mono.Debugging.Evaluation
             if (this.TryResolveAsSymbol(symbolInfo, node, out resolved)) {
                 return resolved;
             }
-
-/*
-            if (this.TryResolveAsType(node, out resolved)) {
-                return resolved;
-            }
-            */
-
-/*
-            var symbolInfo = this.SemanticModel.GetSymbolInfo(node);
-            Console.WriteLine($"!! identifier {name} is symbol {symbolInfo.Symbol?.Kind}");
-
-            switch (symbolInfo.Symbol) {
-                case INamespaceSymbol nsSymbol:
-                Console.WriteLine($"!! identifier {name} is namespace: {nsSymbol.Name}");
-                    return new NamespaceValueReference(this.Context, nsSymbol.Name);
-            }
-            */
 
             // Try user defined variables
             if (this.UserVariables.TryGetValue(name, out var valueRef)) {
@@ -511,20 +491,124 @@ namespace Mono.Debugging.Evaluation
                 throw new ImplicitEvaluationDisabledException();
             }
 
-            var info = node.Accept(new BindingInfoVisitor(this,
-                BindingFlags.Instance | BindingFlags.Static | BindingFlags.InvokeMethod,
-                null));
+            var symbolInfo = SemanticModel.GetSymbolInfo(node);
+            Console.WriteLine($"!! -> invocation symbol: {symbolInfo.Symbol?.Kind}");
 
-            Console.WriteLine($"!! invoking ({this.Context.Adapter.GetTypeName(this.Context, info.Type)}).{info.MethodName}<{string.Join(",", info.TypeArguments?.Select(t => this.Context.Adapter.GetTypeName(this.Context, t)) ?? Enumerable.Empty<string>())}>({string.Join(",", info.Arguments.Select(a => this.Context.Adapter.GetValueTypeName(this.Context, a)))})");
+            object receiver = null;
+            object containingType = null;
 
-            var ret = this.Adapter.RuntimeInvoke(
-                this.Context,
-                info.Type,
-                info.Target,
-                info.MethodName,
-                info.TypeArguments,
-                info.ArgumentTypes,
-                info.Arguments);
+            var argRefs = node.ArgumentList.Arguments.Select (a => a.Accept (this)).ToList ();
+            var argVals = argRefs.Select (a => a.Value).ToArray ();
+            var argTypes = argRefs.Select (a => a.Type).ToArray ();
+
+            if (symbolInfo.Symbol?.Kind == SymbolKind.Method) {
+                var methodSymbol = (IMethodSymbol)symbolInfo.Symbol;
+
+                Console.WriteLine($"!!  -> static: {methodSymbol.IsStatic}");
+                
+                if (methodSymbol.IsStatic) {
+                    receiver = null;
+                    if (methodSymbol.ContainingType != null) {
+                        containingType = Context.Adapter.GetType (Context, methodSymbol.ContainingType?.GetFullMetadataName());
+                    }
+                }
+                else {
+                    receiver = (node.Expression as MemberAccessExpressionSyntax).Expression
+                        .Accept (this)
+                        .Value;
+                }
+
+                Console.WriteLine($"!!  -> receiver type: {methodSymbol.ReceiverType?.Kind}");
+
+                var receiverType = Context.Adapter.GetType (Context, methodSymbol.ReceiverType.GetFullMetadataName());
+
+                return LiteralValueReference.CreateTargetObjectLiteral(this.Context, "result",
+                    Adapter.RuntimeInvoke (Context,
+                        receiverType,
+                        receiver,
+                        methodSymbol.MetadataName,
+                        methodSymbol.Parameters.Select(p => Context.Adapter.GetType (Context, p.Type.GetFullMetadataName())).ToArray(),
+                        argVals));
+            }
+
+            string methodName;
+            IEnumerable<object> typeArguments;
+            ValueReference parentRef = null;
+
+            switch (node.Expression) {
+            case NameSyntax name:
+                (methodName, typeArguments) = GetNameInfo (name);
+                break;
+            case MemberAccessExpressionSyntax memberAccess:
+                parentRef = memberAccess.Expression.Accept (this)
+                    ?? memberAccess.Expression.Accept (typeVisitor);
+                (methodName, typeArguments) = GetNameInfo (memberAccess.Name);
+                break;
+            default:
+                throw new EvaluatorException($"Unexpected invocation on {node} ({node.Expression.Kind()})");
+            }
+
+            // Find the method
+            var typeArgs = typeArguments?.ToArray ();
+
+            if (parentRef == null) {
+                foreach (var (ambientValue, ambientType) in Context.GetAmbientValues ()) {
+                    BindingFlags bindingFlags = ambientValue != null ? BindingFlags.Instance : BindingFlags.Static;
+                    bindingFlags |= BindingFlags.Public | BindingFlags.NonPublic;
+
+                    // Check for method with matching argument types
+                    if (Context.Adapter.HasMethod (Context, ambientType, methodName, typeArgs, argTypes, bindingFlags)) {
+                        receiver = ambientValue?.Value;
+                        containingType = ambientType;
+                        break;
+                    }
+
+                    // Find method by member?
+                    foreach (var member in Context.Adapter.GetMembers(Context, ambientValue, ambientType, ambientValue?.Value)) {
+                        Console.WriteLine($"!!  -> member of ambient: {member}");
+                    }
+
+                    // Check for method with matching parameter length
+                    /*
+                    if (Context.Adapter.HasMethodWithParamLength (Context, ambientType, methodName, bindingFlags, argTypes.Length)) {
+                        receiver = ambientValue?.Value;
+                        containingType = ambientType;
+                        argTypes = null;
+                        break;
+                    }
+                    */
+                }
+            } else if (parentRef is TypeValueReference) {
+                var parentType = parentRef.Type;
+                // static method on type
+
+                if (!Context.Adapter.HasMethod (Context, parentType, methodName, typeArgs, argTypes, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)) {
+                    throw new EvaluatorException($"Could  not find method {methodName} on {Context.Adapter.GetTypeName (Context, parentType)}");
+                }
+                containingType = parentType;
+                receiver = null;
+            } else if (parentRef is NamespaceValueReference) {
+                throw new EvaluatorException("Could not find class with given method");
+            } else {
+                receiver = parentRef.Value;
+                containingType = parentRef.Type;
+            }
+
+            if (containingType == null)
+                throw new Exception("Did not resolve containgType");
+
+            Console.WriteLine($"!! invoking ({this.Context.Adapter.GetTypeName(this.Context, containingType)}).{methodName}<{string.Join(",", typeArgs?.Select(t => this.Context.Adapter.GetTypeName(this.Context, t)) ?? Enumerable.Empty<string>())}>({string.Join(",", argVals.Select(a => this.Context.Adapter.GetValueTypeName(this.Context, a)))})");
+
+            var ret = this.Adapter.RuntimeInvoke (Context,
+                containingType,
+                receiver,
+                methodName,
+                typeArgs,
+                argTypes,
+                argVals);
+
+            if (ret == null)
+                throw new EvaluatorException($"Could not evaluate {node}");
 
             return LiteralValueReference.CreateTargetObjectLiteral(this.Context, "result", ret);
         }
@@ -537,26 +621,23 @@ namespace Mono.Debugging.Evaluation
 
             Console.WriteLine($"!!  -> symbol: {symbolInfo.Symbol?.Kind}");
 
-/*
-            if ((symbolInfo.Symbol is ITypeSymbol) && this.TryResolveAsSymbol(symbolInfo, node.Name, out resolved)) {
-                return resolved;
-            }
-
-            Console.WriteLine($"!!  -> brute-force...");
-            */
             var parent = node.Expression.Accept(this);
 
-            if (parent ==  null) {
-                return null;
-                //throw new EvaluatorException($"Could not resolve parent of '{node}'");
-            }
+            if (parent == null) {
+                parent = node.Expression.Accept (typeVisitor);
 
-            //this.LookupContext.Parent = parent;
+                // Abort here if parent does not resolve to a non-namespace value
+                // It will be handled further up the tree as this rewinds
+                if (parent == null || parent is NamespaceValueReference)
+                    return null;
+            }
 
             Console.WriteLine($"!!  -> parent: {parent.GetType()}");
             switch (parent) {
                 case TypeValueReference typeParent:
-                    // Nested type?
+                    // Static member?
+                    if (TryGetMember (parent, node.Name.Identifier.Text, out resolved))
+                        return resolved;
                     break;
                 default:
                     if (this.TryGetMember(parent, node.Name.Identifier.Text, out resolved)) {
@@ -565,12 +646,13 @@ namespace Mono.Debugging.Evaluation
                     break;
             }
 
-            return node.Name.Accept(this);
+            return null;
+            //return node.Name.Accept(this);
         }
 
         public override ValueReference VisitNullableType(NullableTypeSyntax node)
         {
-            var innerType = this.ResolveType(node.ElementType);
+            var innerType = node.ElementType.Accept (typeVisitor);
             if (this.TryGetType("System.Nullable`1", new[] { innerType }, out var type)) {
                 return new TypeValueReference(this.Context, type);
             }
@@ -580,7 +662,8 @@ namespace Mono.Debugging.Evaluation
 
         public override ValueReference VisitObjectCreationExpression(ObjectCreationExpressionSyntax node)
         {
-            var type = this.ResolveType(node.Type);
+            //var type = this.ResolveType(node.Type);
+            var type = node.Type.Accept (typeVisitor).Type;
             var args = node.ArgumentList.Arguments
                 .Select(a => a.Accept(this)?.Value)
                 .ToArray();
@@ -639,7 +722,8 @@ namespace Mono.Debugging.Evaluation
                         case int i: newVal = -i; break;
                         case uint ui: newVal = -ui; break;
                         case long l: newVal = -l; break;
-                        // TODO: float, double
+                        case float f: newVal = -f; break;
+                        case double d: newVal = -d; break;
                     }
                     break;
                 case SyntaxKind.UnaryPlusExpression:
@@ -654,12 +738,6 @@ namespace Mono.Debugging.Evaluation
             return LiteralValueReference.CreateObjectLiteral(this.Context, node.ToString(), newVal);
         }
 
-        public override ValueReference VisitQualifiedName(QualifiedNameSyntax node)
-        {
-            this.LookupContext.Parent = node.Left.Accept(this);
-            return node.Right.Accept(this);
-        }
-
         public override ValueReference VisitThisExpression(ThisExpressionSyntax node)
         {
             return this.Context.Adapter.GetThisReference(this.Context);
@@ -667,74 +745,14 @@ namespace Mono.Debugging.Evaluation
 
         public override ValueReference VisitTypeOfExpression(TypeOfExpressionSyntax node)
         {
-            var typeObj = this.ResolveType(node.Type);
-            if (typeObj != null) {
-                return LiteralValueReference.CreateTargetObjectLiteral(this.Context,
-                    node.Type.ToString(),
-                    this.Context.Adapter.CreateTypeObject(this.Context, typeObj));
-            }
+            var typeObj = node.Type.Accept (typeVisitor)?.Type;
 
-            throw new EvaluatorException($"Could not resolve '{node.Type.ToString()}' to a known type");
-        }
+            if (typeObj == null)
+                throw new EvaluatorException($"Could not resolve '{node.Type.ToString()}' to a known type");
 
-        private bool TryResolveAsNestedType(TypeValueReference parent, SimpleNameSyntax nameNode, out ValueReference resolved)
-        {
-            var name = nameNode.Identifier.Text;
-            var genericName = nameNode as GenericNameSyntax;
-
-            if (genericName != null) {
-                name = $"{name}`{genericName.Arity}";
-            }
-
-            var nestedTypes = this.Context.Adapter
-                .GetNestedTypes(this.Context, parent.Type)
-                .ToList();
-
-            Console.WriteLine($"!!  -> nested types: {nestedTypes.Count}");
-            foreach (var nested in nestedTypes) {
-                var nestedName = this.Context.Adapter.GetTypeName(this.Context, nested);
-                Console.WriteLine($"!!  -> nested type: {nestedName}");
-
-                if (nestedName.EndsWith($"+{name}")) {
-                    if (genericName != null) {
-                        var typeArguments = this.Context.Adapter
-                            .GetGenericTypeArguments(this.Context, parent.Type)
-                            .Concat(genericName.TypeArgumentList.Arguments.Select(ta => ta.Accept(this).Type))
-                            .ToArray();
-
-                        if (this.TryGetType(nestedName, typeArguments, out var typeObj)) {
-                            resolved = new TypeValueReference(this.Context, nested);
-                        }
-                        else {
-                            Console.Write($"!!  -> ???");
-                            resolved = null;
-                            return false;
-                        }
-                    }
-                    else {
-                        resolved = new TypeValueReference(this.Context, nested);
-                        return true;
-                    }
-                }
-            }
-
-            // Brute-force nested type
-            var forcedName = $"Thing`1+{name}";
-            Console.WriteLine($"!!  -> try forcing nested name {forcedName}");
-            var tas = this.Context.Adapter
-                .GetGenericTypeArguments(this.Context, parent.Type)
-                .Concat(genericName.TypeArgumentList.Arguments.Select(ta => ta.Accept(this).Type))
-                .ToArray();
-
-            Console.WriteLine($"!!  -> type args: {string.Join(",",tas.Select(t => this.Context.Adapter.GetTypeName(this.Context, t)))}");
-
-            if (this.TryGetType(forcedName, tas, out var o)) {
-                resolved = new TypeValueReference(this.Context, o);
-                return true;
-            }
-
-            resolved = null;
-            return false;
+            return LiteralValueReference.CreateTargetObjectLiteral(this.Context,
+                node.Type.ToString(),
+                this.Context.Adapter.CreateTypeObject(this.Context, typeObj));
         }
 
         private bool TryResolveAsSymbol(SymbolInfo symbolInfo, SimpleNameSyntax nameNode, out ValueReference resolved)
@@ -774,39 +792,6 @@ namespace Mono.Debugging.Evaluation
             return false;
         }
 
-        private bool TryResolveAsType(SimpleNameSyntax nameNode, out ValueReference resolved)
-            => this.TryResolveAsType(null, nameNode, out resolved);
-
-        private bool TryResolveAsType(string parent, SimpleNameSyntax nameNode, out ValueReference resolved)
-        {
-            Console.WriteLine($"!!  -> TryResolveAsType");
-            var fullName = parent != null
-                ? $"{parent}.{nameNode.Identifier.Text}"
-                : nameNode.Identifier.Text;
-
-            var typeArguments = (nameNode as GenericNameSyntax)?.TypeArgumentList.Arguments
-                .Select(t => t.Accept(this).Type)
-                .ToArray();
-
-            if (typeArguments != null) {
-                if (this.TryGetType(fullName, typeArguments, out var typeObj)) {
-                    resolved = new TypeValueReference(this.Context, typeObj);
-                    return true;
-                }
-            }
-            else {
-                if (this.TryGetType(fullName, out var typeObj)) {
-                    resolved = new TypeValueReference(this.Context, typeObj);
-                    return true;
-                }
-            }
-
-            // TODO: Generic
-
-            resolved = null;
-            return false;
-        }
-
         private TypeValueReference GetTypeValueReference(ITypeSymbol symbol, IEnumerable<TypeSyntax> typeArguments = null)
         {
             var fullName = symbol.GetFullMetadataName();
@@ -830,6 +815,23 @@ namespace Mono.Debugging.Evaluation
             }
 
             return new TypeValueReference(this.Context, typeObject);
+        }
+
+        private (string name, IEnumerable<object> typeArguments) GetNameInfo (NameSyntax node)
+        {
+			switch (node) {
+			case GenericNameSyntax genericName:
+				return GetNameInfo (genericName);
+			case IdentifierNameSyntax identifierName:
+                return (identifierName.Identifier.Text, null);
+			default:
+				throw new Exception($"TryResolveName doesn't support {node.Kind()}");
+			}
+        }
+        private (string name, IEnumerable<object> typeArguments) GetNameInfo (GenericNameSyntax node)
+        {
+			return ($"{node.Identifier.Text}`{node.Arity}",
+                node.TypeArgumentList.Arguments.Select (a => a.Accept (typeVisitor).Type));
         }
     }
 
