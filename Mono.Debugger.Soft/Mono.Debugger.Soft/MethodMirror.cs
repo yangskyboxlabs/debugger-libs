@@ -241,7 +241,7 @@ namespace Mono.Debugger.Soft
 		}
 
 		public LocalScope [] GetScopes () {
-			vm.CheckProtocolVersion (2, 43);
+			vm.CheckProtocolVersion (2, 43, "METHOD_GET_LOCALS_INFO");
 			GetLocals ();
 			return scopes;
 		}
@@ -334,7 +334,7 @@ namespace Mono.Debugger.Soft
 			if (GetGenericArguments ().Length != args.Length)
 				throw new ArgumentException ("Incorrect length");
 
-			vm.CheckProtocolVersion (2, 24);
+			vm.CheckProtocolVersion (2, 24, "METHOD_MAKE_GENERIC_METHOD");
 			long id = -1;
 			try {
 				id = vm.conn.Method_MakeGenericMethod (Id, args.Select (t => t.Id).ToArray ());

@@ -700,9 +700,9 @@ namespace Mono.Debugger.Soft
 			return res;
 		}
 
-		internal void CheckProtocolVersion (int major, int minor) {
+		internal void CheckProtocolVersion (int major, int minor, string feature = null) {
 			if (!conn.Version.AtLeast (major, minor))
-				throw new NotSupportedException ("This request is not supported by the protocol version implemented by the debuggee.");
+				throw new NotSupportedException ($"This request is not supported by the protocol version implemented by the debuggee. ({feature}) Want >={major}.{minor}; has {conn.Version.MajorVersion}.{conn.Version.MinorVersion}.");
 		}
     }
 

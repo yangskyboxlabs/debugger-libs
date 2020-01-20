@@ -2489,12 +2489,12 @@ namespace Mono.Debugger.Soft
 							w.WriteBool (em.Caught);
 							w.WriteBool (em.Uncaught);
 						} else if (!em.Caught || !em.Uncaught) {
-							throw new NotSupportedException ("This request is not supported by the protocol version implemented by the debuggee.");
+							throw new NotSupportedException ($"This request is not supported by the protocol version implemented by the debuggee. (EXCEPTION_ONLY) Want >=2.1; has {Version.MajorVersion}.{Version.MinorVersion}");
 						}
 						if (Version.MajorVersion > 2 || Version.MinorVersion > 24) {
 							w.WriteBool (em.Subclasses);
 						} else if (!em.Subclasses) {
-							throw new NotSupportedException ("This request is not supported by the protocol version implemented by the debuggee.");
+							throw new NotSupportedException ($"This request is not supported by the protocol version implemented by the debuggee. (SUBCLASSES) Want >=2.25; has {Version.MajorVersion}.{Version.MinorVersion}");
 						}
 						if (Version.MajorVersion > 2 || Version.MinorVersion >= 54) {
 							w.WriteBool (em.NotFilteredFeature);

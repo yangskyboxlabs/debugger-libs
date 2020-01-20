@@ -68,7 +68,7 @@ namespace Mono.Debugger.Soft
 		public AppDomainMirror Domain {
 			get {
 				if (domain == null) {
-					vm.CheckProtocolVersion (2, 45);
+					vm.CheckProtocolVersion (2, 45, "ASSEMBLY_GET_DOMAIN");
 					domain = vm.GetDomain (vm.conn.Assembly_GetIdDomain (id));
 				}
 				return domain;
@@ -160,7 +160,7 @@ namespace Mono.Debugger.Soft
 			if (metadata_blob != null)
 				return metadata_blob;
 			
-			vm.CheckProtocolVersion (2, 47);
+			vm.CheckProtocolVersion (2, 47, "ASSEMBLY_GET_METADTA_BLOB");
 
 			return metadata_blob = vm.conn.Assembly_GetMetadataBlob (id);
 		}
@@ -170,7 +170,7 @@ namespace Mono.Debugger.Soft
 				if (isDynamic.HasValue)
 					return isDynamic.Value;
 				
-				vm.CheckProtocolVersion (2, 47);
+				vm.CheckProtocolVersion (2, 47, "ASSEMBLY_GET_IS_DYNAMIC");
 
 				isDynamic = vm.conn.Assembly_IsDynamic (id);
 				return isDynamic.Value;
@@ -189,7 +189,7 @@ namespace Mono.Debugger.Soft
 			if (HasFetchedPdb)
 				return pdb_blob;
 			
-			vm.CheckProtocolVersion (2, 47);
+			vm.CheckProtocolVersion (2, 47, "ASSEMBLY_GET_PDB_BLOB");
 			var blob = vm.conn.Assembly_GetPdbBlob (id);
 			if (blob != null && blob.Length > 0) {
 				pdb_blob = blob;
@@ -199,7 +199,7 @@ namespace Mono.Debugger.Soft
 		}
 
 		public TypeMirror GetType (uint token) {
-			vm.CheckProtocolVersion (2, 47);
+			vm.CheckProtocolVersion (2, 47, "ASSEMBLY_GET_TYPE_FROM_TOKEN");
 			if (IsDynamic)
 				throw new NotSupportedException ();
 			
@@ -212,7 +212,7 @@ namespace Mono.Debugger.Soft
 		}
 
 		public MethodMirror GetMethod (uint token) {
-			vm.CheckProtocolVersion (2, 47);
+			vm.CheckProtocolVersion (2, 47, "ASSEMBLY_GET_METHOD_FROM_TOKEN");
 			if (IsDynamic)
 				throw new NotSupportedException ();
 			
@@ -229,7 +229,7 @@ namespace Mono.Debugger.Soft
 				if (has_debug_info.HasValue)
 					return has_debug_info.Value;
 
-				vm.CheckProtocolVersion (2, 51);
+				vm.CheckProtocolVersion (2, 51, "ASSEMBLY_GET_HAS_DEBUG_INFO");
 
 				has_debug_info = vm.conn.Assembly_HasDebugInfo (id);
 				return has_debug_info.Value;

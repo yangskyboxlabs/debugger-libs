@@ -73,7 +73,7 @@ namespace Mono.Debugger.Soft
 		}
 
 		public ArrayMirror CreateByteArray (byte [] bytes) {
-			vm.CheckProtocolVersion (2, 52);
+			vm.CheckProtocolVersion (2, 52, "DOMAIN_CREATE_BYTE_ARRAY");
 			if (bytes == null)
 				throw new ArgumentNullException ("bytes");
 

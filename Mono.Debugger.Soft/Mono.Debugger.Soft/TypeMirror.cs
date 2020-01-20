@@ -897,7 +897,7 @@ namespace Mono.Debugger.Soft
 		// Since protocol version 2.23
 		public bool IsInitialized {
 			get {
-				vm.CheckProtocolVersion (2, 23);
+				vm.CheckProtocolVersion (2, 23, "TYPE_IS_INITIALIZED");
 				if (!inited)
 					inited = vm.conn.Type_IsInitialized (id);
 				return inited;
