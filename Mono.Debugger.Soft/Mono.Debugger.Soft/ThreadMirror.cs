@@ -55,7 +55,7 @@ namespace Mono.Debugger.Soft
 				for (int i = 0; i < frame_info.Length; ++i) {
 					var frameInfo = (FrameInfo)frame_info [i];
 					var method = vm.GetMethod (frameInfo.method);
-					var f = new StackFrame (vm, frameInfo.id, this, method, frameInfo.il_offset, frameInfo.flags);
+					var f = new StackFrame (vm, frameInfo.id, this, (MethodMirror)method, frameInfo.il_offset, frameInfo.flags);
 					if (!(f.IsNativeTransition && !NativeTransitions))
 						framesList.Add (f);
 				}

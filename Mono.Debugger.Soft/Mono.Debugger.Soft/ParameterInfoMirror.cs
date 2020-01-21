@@ -5,7 +5,8 @@ using System.Reflection;
 
 namespace Mono.Debugger.Soft
 {
-	public class ParameterInfoMirror : Mirror {
+	public class ParameterInfoMirror : ParameterInfo, IMirror {
+		VirtualMachine vm;
 
 		MethodMirror method;
 		TypeMirror type;
@@ -13,7 +14,11 @@ namespace Mono.Debugger.Soft
 		int pos;
 		ParameterAttributes attrs;
 
-		internal ParameterInfoMirror (MethodMirror method, int pos, TypeMirror type, string name, ParameterAttributes attrs) : base (method.VirtualMachine, 0) {
+		public VirtualMachine VirtualMachine => vm;
+
+		internal ParameterInfoMirror (MethodMirror method, int pos, TypeMirror type, string name, ParameterAttributes attrs)
+		{
+			vm = method.VirtualMachine;
 			this.method = method;
 			this.pos = pos;
 			this.type = type;
@@ -21,11 +26,14 @@ namespace Mono.Debugger.Soft
 			this.attrs = attrs;
 		}
 
-		public TypeMirror ParameterType {
+		public override Type ParameterType {
 			get {
 				return type;
 			}
 		}
+
+		public override bool HasDefaultValue => false;
+		public override object DefaultValue => System.DBNull.Value;
 
 		public MethodMirror Method {
 			get {
@@ -33,27 +41,21 @@ namespace Mono.Debugger.Soft
 			}
 		}
 
-		public string Name {
+		public override string Name {
 			get {
 				return name;
 			}
 		}
 
-		public int Position {
+		public override int Position {
 			get {
 				return pos;
 			}
 		}
 
-		public ParameterAttributes Attributes {
+		public override ParameterAttributes Attributes {
 			get {
 				return attrs;
-			}
-		}
-
-		public bool IsRetval {
-			get {
-				return (Attributes & ParameterAttributes.Retval) != 0;
 			}
 		}
 

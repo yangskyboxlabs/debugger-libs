@@ -13,7 +13,7 @@ namespace Mono.Debugger.Soft
 		public MethodMirror Method {
 			get {
 				if (method == null)
-					method = vm.GetMethod (id);
+					method = (MethodMirror) vm.GetMethod (id);
 				return method;
 			}
 		}

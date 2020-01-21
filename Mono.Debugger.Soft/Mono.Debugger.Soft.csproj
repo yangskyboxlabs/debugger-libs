@@ -20,6 +20,7 @@
     <NuGetVersionCecil Condition="$(NuGetVersionCecil) == ''">0.10.1</NuGetVersionCecil>
   </PropertyGroup>
   <ItemGroup>
+  <PackageReference Include="System.Collections.Immutable" Version="1.7.0" />
     <PackageReference Include="Mono.Cecil" Version="$(NuGetVersionCecil)" PrivateAssets="all" />
   </ItemGroup>
 </Project>

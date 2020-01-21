@@ -38,7 +38,7 @@ namespace Mono.Debugger.Soft
 			if (method.IsStatic || method.DeclaringType.IsValueType || this_val == null || !(this_val is ObjectMirror))
 				throw new NotSupportedException ();
 
-			var instructions = body.Instructions;
+			var instructions = ((MethodBodyMirror)body).Instructions;
 			if (instructions.Count < 1 || instructions.Count > 16)
 				throw new NotSupportedException ();
 
@@ -338,7 +338,7 @@ namespace Mono.Debugger.Soft
 						if (method.ReturnType.IsPrimitive && primitive != null) {
 							// cast the primitive value to the return type
 							try {
-								switch (method.ReturnType.CSharpName) {
+								switch (((TypeMirror)method.ReturnType).CSharpName) {
 								case "double": res = new PrimitiveValue (method.VirtualMachine, Convert.ToDouble (primitive.Value)); break;
 								case "float": res = new PrimitiveValue (method.VirtualMachine, Convert.ToSingle (primitive.Value)); break;
 								case "ulong": res = new PrimitiveValue (method.VirtualMachine, Convert.ToUInt64 (primitive.Value)); break;
@@ -357,7 +357,7 @@ namespace Mono.Debugger.Soft
 							}
 						} else if (method.ReturnType.IsEnum && primitive != null) {
 							try {
-								res = method.VirtualMachine.CreateEnumMirror (method.ReturnType, primitive);
+								res = method.VirtualMachine.CreateEnumMirror ((TypeMirror)method.ReturnType, primitive);
 							} catch {
 								throw new NotSupportedException ();
 							}

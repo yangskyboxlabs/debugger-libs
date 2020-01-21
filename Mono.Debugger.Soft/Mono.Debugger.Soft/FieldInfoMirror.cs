@@ -1,13 +1,17 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Reflection;
 using C = Mono.Cecil;
 using Mono.Cecil.Metadata;
+using System.Globalization;
 
 namespace Mono.Debugger.Soft
 {
-	public class FieldInfoMirror : Mirror {
+	public class FieldInfoMirror : System.Reflection.FieldInfo, IMirror {
+		VirtualMachine vm;
+		long id;
 
 		TypeMirror parent;
 		string name;
@@ -17,7 +21,10 @@ namespace Mono.Debugger.Soft
 		C.FieldDefinition meta;
 		bool inited;
 
-		public FieldInfoMirror (TypeMirror parent, long id, string name, TypeMirror type, FieldAttributes attrs) : base (parent.VirtualMachine, id) {
+		public VirtualMachine VirtualMachine => vm;
+		public long Id => id;
+
+		public FieldInfoMirror (TypeMirror parent, long id, string name, TypeMirror type, FieldAttributes attrs) : this (parent.VirtualMachine, id) {
 			this.parent = parent;
 			this.name = name;
 			this.type = type;
@@ -25,10 +32,13 @@ namespace Mono.Debugger.Soft
 			inited = true;
 		}
 
-		public FieldInfoMirror (VirtualMachine vm, long id) : base (vm, id) {
+		public FieldInfoMirror (VirtualMachine vm, long id)
+		{
+			this.vm = vm;
+			this.id = id;
 		}
 
-		public TypeMirror DeclaringType {
+		public override Type DeclaringType {
 			get {
 				if (!inited)
 					GetInfo ();
@@ -36,7 +46,7 @@ namespace Mono.Debugger.Soft
 			}
 		}
 
-		public string Name {
+		public override string Name {
 			get {
 				if (!inited)
 					GetInfo ();
@@ -44,7 +54,7 @@ namespace Mono.Debugger.Soft
 			}
 		}
 
-		public TypeMirror FieldType {
+		public override Type FieldType {
 			get {
 				if (!inited)
 					GetInfo ();
@@ -52,7 +62,7 @@ namespace Mono.Debugger.Soft
 			}
 		}
 
-		public FieldAttributes Attributes {
+		public override FieldAttributes Attributes {
 			get {
 				if (!inited)
 					GetInfo ();
@@ -71,103 +81,28 @@ namespace Mono.Debugger.Soft
 			inited = true;
 		}
 
-		public bool IsLiteral
+		public override object[] GetCustomAttributes (bool inherit)
 		{
-			get {return (Attributes & FieldAttributes.Literal) != 0;}
-		} 
-
-		public bool IsStatic
-		{
-			get {return (Attributes & FieldAttributes.Static) != 0;}
-		} 
-
-		public bool IsInitOnly
-		{
-			get {return (Attributes & FieldAttributes.InitOnly) != 0;}
-		}
- 
-		public Boolean IsPublic
-		{ 
-			get
-			{
-				return (Attributes & FieldAttributes.FieldAccessMask) == FieldAttributes.Public;
-			}
-		}
-
-		public Boolean IsPrivate
-		{
-			get
-			{
-				return (Attributes & FieldAttributes.FieldAccessMask) == FieldAttributes.Private;
-			}
-		}
-
-		public Boolean IsFamily
-		{
-			get
-			{
-				return (Attributes & FieldAttributes.FieldAccessMask) == FieldAttributes.Family;
-			}
-		}
-
-		public Boolean IsAssembly
-		{
-			get
-			{
-				return (Attributes & FieldAttributes.FieldAccessMask) == FieldAttributes.Assembly;
-			}
-		}
-
-		public Boolean IsFamilyAndAssembly
-		{
-			get {
-				return (Attributes & FieldAttributes.FieldAccessMask) == FieldAttributes.FamANDAssem;
-			}
-		}
-
-		public Boolean IsFamilyOrAssembly
-		{
-			get
-			{
-				return (Attributes & FieldAttributes.FieldAccessMask) == FieldAttributes.FamORAssem;
-			}
-		}
-
-		public Boolean IsPinvokeImpl
-		{
-			get
-			{
-				return (Attributes & FieldAttributes.PinvokeImpl) == FieldAttributes.PinvokeImpl;
-			}
-		}
-
-		public Boolean IsSpecialName
-		{
-			get
-			{
-				return (Attributes & FieldAttributes.SpecialName) == FieldAttributes.SpecialName;
-			}
-		}
-
-		public Boolean IsNotSerialized
-		{
-			get
-			{
-				return (Attributes & FieldAttributes.NotSerialized) == FieldAttributes.NotSerialized;
-			}
-		}
-
-		public CustomAttributeDataMirror[] GetCustomAttributes (bool inherit) {
 			return GetCAttrs (null, inherit);
 		}
 
+		public override object[] GetCustomAttributes(Type attributeType, bool inherit)
+		{
+			if (attributeType is TypeMirror t)
+				return GetCAttrs (t, inherit);
+
+			throw new ArgumentException("Type argument is not a TypeMirror", nameof(attributeType));
+		}
+
+/*
 		public CustomAttributeDataMirror[] GetCustomAttributes (TypeMirror attributeType, bool inherit) {
 			if (attributeType == null)
 				throw new ArgumentNullException ("attributeType");
 			return GetCAttrs (attributeType, inherit);
 		}
+		*/
 
-		public C.FieldDefinition Metadata {		
+		public C.FieldDefinition Metadata {
 			get {
 				if (parent.Metadata == null)
 					return null;
@@ -191,7 +126,7 @@ namespace Mono.Debugger.Soft
 
 			// FIXME: Handle inherit
 			if (cattrs == null) {
-				CattrInfo[] info = vm.conn.Type_GetFieldCustomAttributes (DeclaringType.Id, id, 0, false);
+				CattrInfo[] info = vm.conn.Type_GetFieldCustomAttributes (((TypeMirror)DeclaringType).Id, id, 0, false);
 				cattrs = CustomAttributeDataMirror.Create (vm, info);
 			}
 			var res = new List<CustomAttributeDataMirror> ();
@@ -199,6 +134,21 @@ namespace Mono.Debugger.Soft
 				if (type == null || attr.Constructor.DeclaringType == type)
 					res.Add (attr);
 			return res.ToArray ();
+		}
+
+		public override object GetValue(object obj)
+		{
+			throw new Exception("FieldInfoMirror.GetValue is not implemented");
+		}
+
+		public override void SetValue(object obj, object value, BindingFlags invokeAttr, Binder binder, CultureInfo culture)
+		{
+			throw new Exception("FieldInfoMirror.SetValue is not implemented");
+		}
+
+		public override bool IsDefined(Type attributeType, bool inherit)
+		{
+			throw new NotImplementedException();
 		}
 
 		public string FullName {
@@ -214,6 +164,10 @@ namespace Mono.Debugger.Soft
 				return sb.ToString ();
 			}
 		}
+
+		public override RuntimeFieldHandle FieldHandle => throw new NotImplementedException();
+
+		public override Type ReflectedType => throw new NotSupportedException ();
 	}
 }
 

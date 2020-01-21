@@ -1,21 +1,21 @@
-// 
+//
 // PropertyValueReference.cs
-//  
+//
 // Author:
 //       Lluis Sanchez Gual <lluis@novell.com>
-// 
+//
 // Copyright (c) 2009 Novell, Inc (http://www.novell.com)
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
 // in the Software without restriction, including without limitation the rights
 // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -42,7 +42,7 @@ namespace Mono.Debugging.Soft
 		object obj, value;
 		bool haveValue;
 		bool safe;
-		
+
 		public PropertyValueReference (EvaluationContext ctx, PropertyInfoMirror property, object obj, TypeMirror declaringType, MethodMirror getter, Value[] indexerArgs): base (ctx)
 		{
 			this.safe = Context.Adapter.IsSafeToInvokeMethod (ctx, getter, obj ?? declaringType);
@@ -54,7 +54,7 @@ namespace Mono.Debugging.Soft
 
 			if (getter.IsStatic)
 				this.obj = null;
-			
+
 			var objectMirror = obj as ObjectMirror;
 			if (objectMirror != null)
 				EnsureContextHasDomain (objectMirror.Domain);
@@ -88,7 +88,7 @@ namespace Mono.Debugging.Soft
 
 			return flags;
 		}
-		
+
 		public override ObjectValueFlags Flags {
 			get {
 				return flags;
@@ -106,7 +106,7 @@ namespace Mono.Debugging.Soft
 				return property.PropertyType;
 			}
 		}
-		
+
 		public override object DeclaringType {
 			get {
 				return property.DeclaringType;
@@ -152,7 +152,7 @@ namespace Mono.Debugging.Soft
 			this.value = null;
 			haveValue = false;
 
-			((SoftEvaluationContext) ctx).RuntimeInvoke (setter, obj ?? declaringType, args);
+			((SoftEvaluationContext) ctx).RuntimeInvoke ((MethodInfoMirror)setter, obj ?? declaringType, args);
 
 			this.value = value;
 			haveValue = true;
@@ -176,7 +176,7 @@ namespace Mono.Debugging.Soft
 
 		internal string [] GetTupleElementNames ()
 		{
-			return FieldValueReference.GetTupleElementNames (property.GetCustomAttributes (true));
+			return FieldValueReference.GetTupleElementNames ((CustomAttributeDataMirror[])property.GetCustomAttributes (true));
 		}
 	}
 }

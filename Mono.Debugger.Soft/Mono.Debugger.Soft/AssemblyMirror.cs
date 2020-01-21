@@ -10,10 +10,13 @@ using Mono.Cecil;
 
 namespace Mono.Debugger.Soft
 {
-	public class AssemblyMirror : Mirror
+	public class AssemblyMirror : System.Reflection.Assembly, IMirrorWithId
 	{
+		VirtualMachine vm;
+		long id;
+
 		string location;
-		MethodMirror entry_point;
+		MethodInfoMirror entry_point;
 		bool entry_point_set;
 		ModuleMirror main_module;
 		AssemblyName aname;
@@ -31,10 +34,16 @@ namespace Mono.Debugger.Soft
 		AssemblyDefinition meta;
 #endif
 
-		internal AssemblyMirror (VirtualMachine vm, long id) : base (vm, id) {
+		internal AssemblyMirror (VirtualMachine vm, long id)
+		{
+			this.vm = vm;
+			this.id = id;
 		}
 
-		public string Location {
+		public VirtualMachine VirtualMachine => vm;
+		public long Id => id;
+
+		public override string Location {
 			get {
 				if (location == null)
 					location = vm.conn.Assembly_GetLocation (id);
@@ -42,20 +51,20 @@ namespace Mono.Debugger.Soft
 			}
 	    }
 
-		public MethodMirror EntryPoint {
+		public override System.Reflection.MethodInfo EntryPoint {
 			get {
 				if (!entry_point_set) {
 					long mid = vm.conn.Assembly_GetEntryPoint (id);
 
 					if (mid != 0)
-						entry_point = vm.GetMethod (mid);
+						entry_point = new MethodInfoMirror (vm.GetMethod (mid));
 					entry_point_set = true;
 				}
 				return entry_point;
 			}
 	    }
 
-		public ModuleMirror ManifestModule {
+		public override System.Reflection.Module ManifestModule {
 			get {
 				if (main_module == null) {
 					main_module = vm.GetModule (vm.conn.Assembly_GetManifestModule (id));
@@ -75,7 +84,7 @@ namespace Mono.Debugger.Soft
 			}
 		}
 
-		public virtual AssemblyName GetName () {
+		public override AssemblyName GetName () {
 			if (aname == null) {
 				string name = vm.conn.Assembly_GetName (id);
 				aname = new AssemblyName (name);
@@ -87,43 +96,28 @@ namespace Mono.Debugger.Soft
 			return vm.GetObject (vm.conn.Assembly_GetObject (id));
 		}
 
-		public TypeMirror GetType (string name, bool throwOnError, bool ignoreCase)
+		public override Type GetType(string name, bool throwOnError, bool ignoreCase)
 		{
 			if (name == null)
 				throw new ArgumentNullException ("name");
 			if (name.Length == 0)
 				throw new ArgumentException ("name", "Name cannot be empty");
 
-			if (throwOnError)
-				throw new NotImplementedException ();
 			long typeId;
-			if (ignoreCase) {
-				if (!typeCacheIgnoreCase.TryGetValue (name, out typeId)) {
-					typeId = vm.conn.Assembly_GetType (id, name, ignoreCase);
-					typeCacheIgnoreCase.Add (name, typeId);
-					var type = vm.GetType (typeId);
-					if (type != null) {
-						typeCache.Add (type.FullName, typeId);
-					}
-					return type;
-				}
-			} else {
-				if (!typeCache.TryGetValue (name, out typeId)) {
-					typeId = vm.conn.Assembly_GetType (id, name, ignoreCase);
-					typeCache.Add (name, typeId);
-				}
+			if (!typeCache.TryGetValue (name, out typeId)) {
+				typeId = vm.conn.Assembly_GetType (id, name, ignoreCase);
+				if (typeId == 0 && throwOnError)
+					throw new TypeLoadException($"{name} is not a known type");
+				typeCache.Add (name, typeId);
 			}
 			return vm.GetType (typeId);
 		}
 
-		public TypeMirror GetType (String name, Boolean throwOnError)
-		{
-			return GetType (name, throwOnError, false);
-		}
+		public override Type GetType (String name, Boolean throwOnError)
+			=> GetType (name, throwOnError, false);
 
-		public TypeMirror GetType (String name) {
-			return GetType (name, false, false);
-		}
+		public override Type GetType (String name)
+			=> GetType (name, false);
 
 #if ENABLE_CECIL
 		/* 
@@ -164,8 +158,8 @@ namespace Mono.Debugger.Soft
 
 			return metadata_blob = vm.conn.Assembly_GetMetadataBlob (id);
 		}
-		
-		public bool IsDynamic {
+
+		public override bool IsDynamic {
 			get {
 				if (isDynamic.HasValue)
 					return isDynamic.Value;
@@ -221,7 +215,7 @@ namespace Mono.Debugger.Soft
 				methodId = vm.conn.Assembly_GetMethod (id, token);
 				tokenMethodCache.Add (token, methodId);
 			}
-			return vm.GetMethod (methodId);
+			return (MethodMirror)vm.GetMethod (methodId);
 		}
 
 		public bool HasDebugInfo {

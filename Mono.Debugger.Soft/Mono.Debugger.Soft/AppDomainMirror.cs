@@ -109,7 +109,7 @@ namespace Mono.Debugger.Soft
 
 			int tc_index = (int)tc;
 			if (primitiveTypes [tc_index] == null) {
-				primitiveTypes [tc_index] = Corlib.GetType ("System." + t.Name, false, false);
+				primitiveTypes [tc_index] = (TypeMirror) Corlib.GetType(t.FullName);
 				if (primitiveTypes [tc_index] == null)
 					throw new NotImplementedException ();
 			}

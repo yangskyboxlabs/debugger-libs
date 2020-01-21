@@ -157,11 +157,12 @@ namespace Mono.Debugging.Soft
 				if (sm.Fields.Length > 0 && (sm.Fields[0] is PrimitiveValue))
 					return ((PrimitiveValue) sm.Fields[0]).Value.ToString ();
 			} else if (om != null && cx.Options.AllowTargetInvoke) {
-				var method = OverloadResolve (cx, om.Type, "ToString", null, new ArgumentType[0], true, false, false);
+				Console.WriteLine($"!!! -> CallToString on ObjectMirror");
+				var method = (MethodInfoMirror)om.Type.GetMethod (nameof(ToString));
 				if (method != null && method.DeclaringType.FullName != "System.Object")
 					return InvokeToString (cx, method, obj);
 			} else if (sm != null && cx.Options.AllowTargetInvoke) {
-				var method = OverloadResolve (cx, sm.Type, "ToString", null, new ArgumentType [0], true, false, false);
+				var method = (MethodInfoMirror)sm.Type.GetMethod (nameof(ToString));
 				if (method != null && method.DeclaringType.FullName != "System.ValueType")
 					return InvokeToString (cx, method, obj);
 			}
@@ -469,17 +470,23 @@ namespace Mono.Debugging.Soft
 			var types = new ArgumentType [argValues.Length];
 			var values = new Value[argValues.Length];
 
+			//var ctors = tm.GetConstructorMethods();
+
+			var argTypes = argValues.Select(a => a.GetType()).ToArray();
+			Console.WriteLine($" -> ctor args: {string.Join(", ", argTypes.Select(t => t.FullName))}");
+
 			for (int n = 0; n < argValues.Length; n++) {
 				types[n] = ToArgumentType (ctx, GetValueType (ctx, argValues[n]));
 			}
 
 			var method = OverloadResolve (cx, tm, ".ctor", null, types, true, false, false);
+			//var method = (MethodMirror) ctorInfo;
 
 			if (method != null) {
 				var mparams = method.GetParameters ();
 
 				for (int n = 0; n < argValues.Length; n++) {
-					var param_type = mparams [n].ParameterType;
+					var param_type = (TypeMirror)mparams [n].ParameterType;
 
 					if (param_type.FullName != types [n].Type.FullName && !param_type.IsAssignableFrom (types [n].Type) && param_type.IsGenericType) {
 						/* TODO: Add genericTypeArgs and handle this
@@ -770,12 +777,20 @@ namespace Mono.Debugging.Soft
 				values[n] = (Value) indices[n];
 			}
 
+			var typeInfo = (TypeMirror) type;
+			var itemProp = (PropertyInfoMirror) typeInfo.GetProperty ("Item");
+
+			if ((itemProp?.GetIndexParameters ().Length ?? 0) > 0) {
+				var getMethod = (MethodInfoMirror) itemProp.GetMethod;
+				return new PropertyValueReference (ctx, itemProp, target, null, getMethod, values);
+			}
+
 			var candidates = new List<MethodMirror> ();
 			var props = new List<PropertyInfoMirror> ();
 			var mirType = type as TypeMirror;
 			while (mirType != null) {
-				foreach (var prop in mirType.GetProperties ()) {
-					var met = prop.GetGetMethod (true);
+				foreach (PropertyInfoMirror prop in mirType.GetProperties ()) {
+					var met = (MethodInfoMirror)prop.GetGetMethod (true);
 					if (met != null &&
 						!met.IsStatic &&
 						met.GetParameters ().Length > 0 &&
@@ -784,13 +799,13 @@ namespace Mono.Debugging.Soft
 						props.Add (prop);
 					}
 				}
-				mirType = mirType.BaseType;
+				mirType = (TypeMirror)mirType.BaseType;
 			}
 
 			var idx = OverloadResolve ((SoftEvaluationContext) ctx, mirType, null, null, null, types, candidates, true);
 			int i = candidates.IndexOf (idx);
 
-			var getter = props[i].GetGetMethod (true);
+			var getter = (MethodInfoMirror)props[i].GetGetMethod (true);
 
 			return getter != null ? new PropertyValueReference (ctx, props[i], target, null, getter, values) : null;
 		}
@@ -966,7 +981,7 @@ namespace Mono.Debugging.Soft
 			var list = new List<ValueReference> ();
 			var type = (TypeMirror) vthis.Type;
 
-			foreach (var field in type.GetFields ()) {
+			foreach (FieldInfoMirror field in type.GetFields ()) {
 				if (IsHoistedThisReference (field))
 					continue;
 
@@ -1022,7 +1037,7 @@ namespace Mono.Debugging.Soft
 		
 		ValueReference GetHoistedThisReference (SoftEvaluationContext cx, TypeMirror type, object val, HashSet<FieldInfoMirror> alreadyVisited = null)
 		{
-			foreach (var field in type.GetFields ()) {
+			foreach (FieldInfoMirror field in type.GetFields ()) {
 				if (IsHoistedThisReference (field))
 					return new FieldValueReference (cx, field, val, type, "this", ObjectValueFlags.Literal);
 
@@ -1032,7 +1047,7 @@ namespace Mono.Debugging.Soft
 						continue;
 					alreadyVisited.Add (field);
 					var fieldRef = new FieldValueReference (cx, field, val, type);
-					var thisRef = GetHoistedThisReference (cx, field.FieldType, fieldRef.Value, alreadyVisited);
+					var thisRef = GetHoistedThisReference (cx, (TypeMirror)field.FieldType, fieldRef.Value, alreadyVisited);
 					if (thisRef != null)
 						return thisRef;
 				}
@@ -1141,7 +1156,7 @@ namespace Mono.Debugging.Soft
 			var tm = (TypeMirror) type;
 
 			while (tm != null) {
-				var field = FindByName (tm.GetFields (), f => f.Name, memberName, ctx.CaseSensitive);
+				var field = FindByName ((FieldInfoMirror[])tm.GetFields (), f => f.Name, memberName, ctx.CaseSensitive);
 
 				if (field != null)
 					return true;
@@ -1157,7 +1172,7 @@ namespace Mono.Debugging.Soft
 				if (bindingFlags.HasFlag (BindingFlags.DeclaredOnly))
 					break;
 
-				tm = tm.BaseType;
+				tm = (TypeMirror)tm.BaseType;
 			}
 
 			return false;
@@ -1176,23 +1191,55 @@ namespace Mono.Debugging.Soft
 		protected override ValueReference OnGetMember (EvaluationContext ctx, IObjectSource objectSource, object t, object co, string name)
 		{
 			var type = t as TypeMirror;
+			var bindingAttr = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+
+			if (co != null) {
+				bindingAttr |= BindingFlags.Instance;
+			}
+
+			var matched = type.GetMember (name, bindingAttr);
+			if (matched.Length == 0) {
+				// Try private members up the inhertance chain
+				for (var vtype = type.BaseType; vtype != null; vtype = vtype.BaseType) {
+					matched = vtype.GetMember (name, BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly | (co != null ? BindingFlags.Instance : default));
+					if (matched.Length > 0)
+						break;
+				}
+			}
+
+			if (matched.Length == 1) {
+				var member = matched[0];
+				switch (member) {
+				case PropertyInfoMirror prop:
+					if (!prop.GetMethod.IsVirtual) {
+						var generatedField = (FieldInfoMirror) prop.DeclaringType.GetField($"<{prop.Name}>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+						if (generatedField != null)
+							return new FieldValueReference (ctx, generatedField, co, (TypeMirror) generatedField.DeclaringType);
+					}
+					return new PropertyValueReference (ctx, prop, co, (TypeMirror)prop.DeclaringType, (MethodInfoMirror)prop.GetMethod, null);
+				case FieldInfoMirror field:
+					return new FieldValueReference (ctx, field, co, (TypeMirror) field.DeclaringType);
+				}
+			}
+
+
 			var tupleNames = GetTupleElementNames (objectSource, ctx);
 			while (type != null) {
-				var field = FindByName (type.GetFields (), f => MapTupleName(f.Name, tupleNames), name, ctx.CaseSensitive);
+				var field = FindByName ((FieldInfoMirror[])type.GetFields (), f => MapTupleName(f.Name, tupleNames), name, ctx.CaseSensitive);
 
 				if (field != null && (field.IsStatic || co != null))
 					return new FieldValueReference (ctx, field, co, type);
 
-				var prop = FindByName (type.GetProperties (), p => p.Name, name, ctx.CaseSensitive);
+				var prop = FindByName ((PropertyInfoMirror[])type.GetProperties (), p => p.Name, name, ctx.CaseSensitive);
 
 				if (prop != null && (IsStatic (prop) || co != null)) {
-					var getter = prop.GetGetMethod (true);
+					var getter = (MethodInfoMirror)prop.GetGetMethod (true);
 					// Optimization: if the property has a CompilerGenerated backing field, use that instead.
 					// This way we avoid overhead of invoking methods on the debugee when the value is requested.
 					//But also check that this method is not virtual, because in that case we need to call getter to invoke override
 					if (!getter.IsVirtual) {
 						var cgFieldName = string.Format ("<{0}>{1}", prop.Name, IsAnonymousType (type) ? "" : "k__BackingField");
-						if ((field = FindByName (type.GetFields (), f => f.Name, cgFieldName, true)) != null && IsCompilerGenerated (field))
+						if ((field = FindByName ((FieldInfoMirror[])type.GetFields (), f => f.Name, cgFieldName, true)) != null && IsCompilerGenerated (field))
 							return new FieldValueReference (ctx, field, co, type, prop.Name, ObjectValueFlags.Property);
 					}
 					// Backing field not available, so do things the old fashioned way.
@@ -1209,7 +1256,7 @@ namespace Mono.Debugging.Soft
 					return null;
 				}
 
-				type = type.BaseType;
+				type = (TypeMirror)type.BaseType;
 			}
 
 			return null;
@@ -1230,7 +1277,7 @@ namespace Mono.Debugging.Soft
 
 		static bool IsCompilerGenerated (FieldInfoMirror field)
 		{
-			var attrs = field.GetCustomAttributes (true);
+			var attrs = (CustomAttributeDataMirror[])field.GetCustomAttributes (true);
 			var generated = GetAttribute<CompilerGeneratedAttribute> (attrs);
 
 			return generated != null;
@@ -1296,7 +1343,7 @@ namespace Mono.Debugging.Soft
 
 			// First of all, get a list of properties overriden in sub-types
 			while (realType != null && realType != type) {
-				foreach (var prop in realType.GetProperties (bindingFlags | BindingFlags.DeclaredOnly)) {
+				foreach (PropertyInfoMirror prop in realType.GetProperties (bindingFlags | BindingFlags.DeclaredOnly)) {
 					var met = prop.GetGetMethod (true);
 
 					if (met == null || met.GetParameters ().Length != 0 || met.IsAbstract || !met.IsVirtual || met.IsStatic)
@@ -1311,25 +1358,16 @@ namespace Mono.Debugging.Soft
 					subProps [prop.Name] = prop;
 				}
 
-				realType = realType.BaseType;
+				realType = (TypeMirror)realType.BaseType;
 			}
 
 			var tupleNames = GetTupleElementNames (objectSource, ctx);
-			bool hasExplicitInterface = false;
 			while (type != null) {
 				var fieldsBatch = new FieldReferenceBatch (co);
-				foreach (var field in type.GetFields ()) {
-					if (field.IsStatic && ((bindingFlags & BindingFlags.Static) == 0))
+				foreach (FieldInfoMirror field in type.GetFields (bindingFlags | BindingFlags.DeclaredOnly)) {
+					if (IsCompilerGenerated(field))
 						continue;
 
-					if (!field.IsStatic && ((bindingFlags & BindingFlags.Instance) == 0))
-						continue;
-
-					if (field.IsPublic && ((bindingFlags & BindingFlags.Public) == 0))
-						continue;
-
-					if (!field.IsPublic && ((bindingFlags & BindingFlags.NonPublic) == 0))
-						continue;
 					if (field.IsStatic) {
 						yield return new FieldValueReference (ctx, field, co, type);
 					} else {
@@ -1338,38 +1376,20 @@ namespace Mono.Debugging.Soft
 					}
 				}
 
-				foreach (var prop in type.GetProperties (bindingFlags)) {
-					var getter = prop.GetGetMethod (true);
+				foreach (PropertyInfoMirror prop in type.GetProperties (bindingFlags)) {
+					var getter = (MethodInfoMirror)prop.GetGetMethod (true);
 
 					if (getter == null || getter.GetParameters ().Length != 0 || getter.IsAbstract)
-						continue;
-
-					if (getter.IsStatic && ((bindingFlags & BindingFlags.Static) == 0))
-						continue;
-
-					if (!getter.IsStatic && ((bindingFlags & BindingFlags.Instance) == 0))
-						continue;
-					
-					if (getter.IsPublic && ((bindingFlags & BindingFlags.Public) == 0))
-						continue;
-
-					//This is only possible in case of explicitly implemented interface property, which we handle later
-					if (getter.IsVirtual && getter.IsPrivate) {
-						hasExplicitInterface = true;
-						continue;
-					}
-
-					if (!getter.IsPublic && ((bindingFlags & BindingFlags.NonPublic) == 0))
 						continue;
 
 					// If a property is overriden, return the override instead of the base property
 					PropertyInfoMirror overridden;
 					if (getter.IsVirtual && subProps.TryGetValue (prop.Name, out overridden)) {
-						getter = overridden.GetGetMethod (true);
+						getter = (MethodInfoMirror)overridden.GetGetMethod (true);
 						if (getter == null)
 							continue;
-						
-						yield return new PropertyValueReference (ctx, overridden, co, overridden.DeclaringType, getter, null);
+
+						yield return new PropertyValueReference (ctx, overridden, co, (TypeMirror)overridden.DeclaringType, getter, null);
 					} else {
 						yield return new PropertyValueReference (ctx, prop, co, type, getter, null);
 					}
@@ -1378,12 +1398,11 @@ namespace Mono.Debugging.Soft
 				if ((bindingFlags & BindingFlags.DeclaredOnly) != 0)
 					break;
 
-				type = type.BaseType;
+				type = (TypeMirror)type.BaseType;
 			}
 
 			type = t as TypeMirror;
 			if (type == null ||
-				!hasExplicitInterface ||
 				(bindingFlags & BindingFlags.Instance) == 0 ||
 				(bindingFlags & BindingFlags.Public) == 0) {
 				yield break;
@@ -1392,8 +1411,8 @@ namespace Mono.Debugging.Soft
 				var interfaces = type.GetInterfaces ();
 				foreach (var intr in interfaces) {
 					var map = type.GetInterfaceMap (intr);
-					foreach (var prop in intr.GetProperties (bindingFlags)) {
-						var getter = prop.GetGetMethod (true);
+					foreach (PropertyInfoMirror prop in intr.GetProperties (bindingFlags)) {
+						var getter = (MethodInfoMirror)prop.GetGetMethod (true);
 						if (getter == null || getter.GetParameters ().Length != 0)
 							continue;
 						var implementationGetter = map.TargetMethods [Array.IndexOf (map.InterfaceMethods, getter)];
@@ -1420,7 +1439,7 @@ namespace Mono.Debugging.Soft
 			return false;
 		}
 
-		static ObjectValueFlags GetFlags (MethodMirror method)
+		static ObjectValueFlags GetFlags (MethodInfoMirror method)
 		{
 			var flags = ObjectValueFlags.Method;
 
@@ -1456,7 +1475,7 @@ namespace Mono.Debugging.Soft
 
 				bool isExternal = Session.IsExternalCode (type);
 
-				foreach (var field in type.GetFields ()) {
+				foreach (FieldInfoMirror field in type.GetFields ()) {
 					if (field.IsStatic || field.IsSpecialName || (isExternal && !field.IsPublic) ||
 						IsClosureReferenceField (field) || IsCompilerGenerated (field))
 						continue;
@@ -1465,14 +1484,14 @@ namespace Mono.Debugging.Soft
 						data.Items.Add (new CompletionItem (field.Name, FieldValueReference.GetFlags (field)));
 				}
 
-				foreach (var property in type.GetProperties ()) {
+				foreach (PropertyInfoMirror property in type.GetProperties ()) {
 					var getter = property.GetGetMethod (true);
 
 					if (getter == null || getter.IsStatic || (isExternal && !getter.IsPublic))
 						continue;
 
 					if (properties.Add (property.Name))
-						data.Items.Add (new CompletionItem (property.Name, PropertyValueReference.GetFlags (property, getter)));
+						data.Items.Add (new CompletionItem (property.Name, PropertyValueReference.GetFlags (property, (MethodInfoMirror)getter)));
 				}
 
 				foreach (var method in type.GetMethods ()) {
@@ -1480,17 +1499,17 @@ namespace Mono.Debugging.Soft
 						continue;
 
 					if (methods.Add (method.Name))
-						data.Items.Add (new CompletionItem (method.Name, GetFlags (method)));
+						data.Items.Add (new CompletionItem (method.Name, GetFlags ((MethodInfoMirror)method)));
 				}
 
 				if (type.BaseType == null && type.FullName != "System.Object")
 					type = ctx.Adapter.GetType (ctx, "System.Object") as TypeMirror;
 				else
-					type = type.BaseType;
+					type = (TypeMirror)type.BaseType;
 			}
 
 			type = (TypeMirror) vr.Type;
-			foreach (var iface in type.GetInterfaces ()) {
+			foreach (TypeMirror iface in type.GetInterfaces ()) {
 				if (!isEnumerable && IsIEnumerable (iface))
 					isEnumerable = true;
 			}
@@ -1700,7 +1719,7 @@ namespace Mono.Debugging.Soft
 				return tm;
 
 			foreach (var asm in cx.Domain.GetAssemblies ()) {
-				tm = asm.GetType (name, false, false);
+				tm = (TypeMirror) asm.GetType (name);
 				if (tm != null)
 					return tm;
 			}
@@ -1741,7 +1760,7 @@ namespace Mono.Debugging.Soft
 				if (tm.GetCustomAttributes (atm, false).Any ())
 					return tm;
 
-				tm = tm.BaseType;
+				tm = (TypeMirror)tm.BaseType;
 			}
 
 			return null;
@@ -1762,7 +1781,7 @@ namespace Mono.Debugging.Soft
 		{
 			var tm = (TypeMirror) type;
 
-			foreach (var nested in tm.GetNestedTypes ())
+			foreach (TypeMirror nested in tm.GetNestedTypes (BindingFlags.Public | BindingFlags.NonPublic))
 				if (!IsGeneratedType (nested))
 					yield return nested;
 		}
@@ -1849,7 +1868,7 @@ namespace Mono.Debugging.Soft
 				if (currentType.BaseType == null && currentType.FullName != "System.Object")
 					currentType = soft.Adapter.GetType (soft, "System.Object") as TypeMirror;
 				else
-					currentType = currentType.BaseType;
+					currentType = (TypeMirror)currentType.BaseType;
 			}
 
 			return false;
@@ -1928,7 +1947,7 @@ namespace Mono.Debugging.Soft
 					if (!argType.IsDelayed)
 						continue;
 
-					var paramType = mparams [i].ParameterType;
+					var paramType = (TypeMirror) mparams [i].ParameterType;
 					var lambdaType = argType.DelayedType;
 
 					if (lambdaType == null || !lambdaType.IsAcceptableType (paramType))
@@ -2044,7 +2063,7 @@ namespace Mono.Debugging.Soft
 			try {
 				var tm = (TypeMirror) type;
 
-				foreach (var attr in tm.GetCustomAttributes (true)) {
+				foreach (CustomAttributeDataMirror attr in tm.GetCustomAttributes (true)) {
 					var attrName = attr.Constructor.DeclaringType.FullName;
 					switch (attrName) {
 					case "System.Diagnostics.DebuggerDisplayAttribute":
@@ -2066,7 +2085,7 @@ namespace Mono.Debugging.Soft
 				}
 
 				foreach (var field in tm.GetFields ()) {
-					var attrs = field.GetCustomAttributes (true);
+					var attrs = (CustomAttributeDataMirror[]) field.GetCustomAttributes (true);
 					var browsable = GetAttribute <DebuggerBrowsableAttribute> (attrs);
 
 					if (browsable == null) {
@@ -2083,7 +2102,7 @@ namespace Mono.Debugging.Soft
 				}
 
 				foreach (var property in tm.GetProperties ()) {
-					var browsable = GetAttribute <DebuggerBrowsableAttribute> (property.GetCustomAttributes (true));
+					var browsable = GetAttribute <DebuggerBrowsableAttribute> ((CustomAttributeDataMirror[]) property.GetCustomAttributes (true));
 					if (browsable != null) {
 						if (memberData == null)
 							memberData = new Dictionary<string, DebuggerBrowsableState> ();
@@ -2154,7 +2173,7 @@ namespace Mono.Debugging.Soft
 
 			return true;
 		}
-		
+
 		static T BuildAttribute<T> (CustomAttributeDataMirror attr)
 		{
 			var args = new List<object> ();
@@ -2189,15 +2208,16 @@ namespace Mono.Debugging.Soft
 			var attribute = Activator.CreateInstance (type, args.ToArray ());
 
 			foreach (var arg in attr.NamedArguments) {
-				object val = arg.TypedValue.Value;
-				string postFix = "";
-
-				if (arg.TypedValue.ArgumentType == typeof (Type))
-					postFix = "TypeName";
-				if (arg.Field != null)
-					type.GetField (arg.Field.Name + postFix).SetValue (attribute, val);
-				else if (arg.Property != null)
-					type.GetProperty (arg.Property.Name + postFix).SetValue (attribute, val, null);
+				if (arg.MemberInfo != null) {
+					switch (arg.MemberInfo) {
+					case PropertyInfo prop:
+						prop.SetValue (attribute, arg.TypedValue.Value);
+						break;
+					case FieldInfo field:
+						field.SetValue (attribute, arg.TypedValue.Value);
+						break;
+					}
+				}
 			}
 
 			return (T) attribute;
@@ -2300,7 +2320,7 @@ namespace Mono.Debugging.Soft
 			var values = new Value [argValues.Length];
 
 			for (int n = 0; n < argValues.Length; n++) {
-				var param_type = mparams [n].ParameterType;
+				var param_type = (TypeMirror) mparams [n].ParameterType;
 				if (param_type.FullName != types [n].Type.FullName && !param_type.IsAssignableFrom (types [n].Type) && param_type.IsGenericType &&
 				   !(param_type.IsGenericType && param_type.FullName.StartsWith ("System.Nullable`1", StringComparison.Ordinal))) {
 					var throwCastException = true;
@@ -2373,7 +2393,7 @@ namespace Mono.Debugging.Soft
 				if (index != -1 && types[index] == null) {
 					var argType = argTypes[i].Type;
 					if (isArray && argType.IsArray)
-						argType = argType.GetElementType ();
+						argType = (TypeMirror) argType.GetElementType ();
 
 					types[index] = argType;
 				}
@@ -2436,7 +2456,7 @@ namespace Mono.Debugging.Soft
 				if (type.VirtualMachine.Version.AtLeast (2, 7)) {
 					methods = type.GetMethodsByNameFlags (methodName, flag, !ctx.CaseSensitive);
 				} else {
-					methods = type.GetMethods ();
+					methods = type.GetMethodMirrors (flag).ToArray();
 				}
 
 				if (ctx.CaseSensitive) {
@@ -2462,7 +2482,7 @@ namespace Mono.Debugging.Soft
 						MethodMirror actualMethod;
 
 						if (argTypes != null && method.VirtualMachine.Version.AtLeast (2, 24) && method.IsGenericMethod) {
-							var generic = method.GetGenericMethodDefinition ();
+							var generic = (MethodMirror) method.GetGenericMethodDefinition ();
 							ArgumentType [] typeArgs;
 
 							//Console.WriteLine ("Attempting to resolve generic type args for: {0}", GetPrettyMethodName (ctx, generic));
@@ -2499,7 +2519,7 @@ namespace Mono.Debugging.Soft
 				if (currentType.BaseType == null && currentType.FullName != "System.Object")
 					currentType = ctx.Adapter.GetType (ctx, "System.Object") as TypeMirror;
 				else
-					currentType = currentType.BaseType;
+					currentType = (TypeMirror) currentType.BaseType;
 			}
 
 			return OverloadResolveMulti (ctx, type, methodName, genericTypeArgs, returnType, argTypes, candidates, throwIfNotFound, tryCasting);
@@ -2511,7 +2531,7 @@ namespace Mono.Debugging.Soft
 			matchCount = 0;
 
 			for (int i = 0; i < types.Length; i++) {
-				var param_type = mparams[i].ParameterType;
+				var param_type = (TypeMirror) mparams[i].ParameterType;
 
 				if (types [i].RepresentsNull && !SoftEvaluationContext.IsValueTypeOrPrimitive (param_type))
 					continue;
@@ -2867,7 +2887,7 @@ namespace Mono.Debugging.Soft
 		{
 			if (handle == null)
 				return true;
-			int res = WaitHandle.WaitAny (new WaitHandle[] { handle.AsyncWaitHandle, shutdownEvent }, timeout); 
+			int res = WaitHandle.WaitAny (new WaitHandle[] { handle.AsyncWaitHandle, shutdownEvent }, timeout);
 			if (res == 0) {
 				EndInvoke ();
 				return true;

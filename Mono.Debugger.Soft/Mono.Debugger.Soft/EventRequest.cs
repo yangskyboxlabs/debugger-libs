@@ -134,7 +134,7 @@ namespace Mono.Debugger.Soft
 				throw new InvalidOperationException ("Request objects can only be modified while they are disabled.");
 		}
 
-		protected void CheckMirror (VirtualMachine vm, Mirror m) {
+		protected void CheckMirror (VirtualMachine vm, IMirror m) {
 			if (vm != m.VirtualMachine)
 				throw new VMMismatchException ();
 		}

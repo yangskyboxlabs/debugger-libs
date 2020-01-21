@@ -17,4 +17,8 @@ namespace Mono.Debugger.Soft
 			get;
 		}
 	}
+
+	public interface IMirrorWithId : IMirror {
+		long Id { get; }
+	}
 }

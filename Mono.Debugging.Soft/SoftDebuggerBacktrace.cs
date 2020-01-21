@@ -97,7 +97,7 @@ namespace Mono.Debugging.Soft
 		DC.StackFrame CreateStackFrame (MDB.StackFrame frame, int frameIndex)
 		{
 			MDB.MethodMirror method = frame.Method;
-			MDB.TypeMirror type = method.DeclaringType;
+			var type = (MDB.TypeMirror)method.DeclaringType;
 			string fileName = frame.FileName;
 			string typeFullName = null;
 			string typeFQN = null;

@@ -9,7 +9,7 @@ using Mono.Cecil.Metadata;
 
 namespace Mono.Debugger.Soft
 {
-	public class VirtualMachine : Mirror
+	public class VirtualMachine
 	{
 		Queue queue;
 		object queue_monitor;
@@ -22,8 +22,10 @@ namespace Mono.Debugger.Soft
 
 		VersionInfo version;
 
-		internal VirtualMachine (ITargetProcess process, Connection conn) : base () {
-			SetVirtualMachine (this);
+		VirtualMachine vm => this;
+
+		internal VirtualMachine (ITargetProcess process, Connection conn)
+		{
 			queue = new Queue ();
 			queue_monitor = new Object ();
 			startup_monitor = new Object ();
@@ -239,7 +241,7 @@ namespace Mono.Debugger.Soft
 		public BreakpointEventRequest CreateBreakpointRequest (Location loc) {
 			if (loc == null)
 				throw new ArgumentNullException ("loc");
-			CheckMirror (loc);
+			AssertSameVm (loc);
 			return new BreakpointEventRequest (this, loc.Method, loc.ILOffset);
 		}
 
@@ -703,6 +705,12 @@ namespace Mono.Debugger.Soft
 		internal void CheckProtocolVersion (int major, int minor, string feature = null) {
 			if (!conn.Version.AtLeast (major, minor))
 				throw new NotSupportedException ($"This request is not supported by the protocol version implemented by the debuggee. ({feature}) Want >={major}.{minor}; has {conn.Version.MajorVersion}.{conn.Version.MinorVersion}.");
+		}
+
+		public void AssertSameVm (IMirror other)
+		{
+			if (this != other.VirtualMachine)
+				throw new VMMismatchException ();
 		}
     }
 

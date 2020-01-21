@@ -3,15 +3,23 @@ using Mono.Debugger;
 
 namespace Mono.Debugger.Soft
 {
-	public class ModuleMirror : Mirror
+	public class ModuleMirror : System.Reflection.Module, IMirror
 	{
+		VirtualMachine vm;
+		long id;
+
 		ModuleInfo info;
 		Guid guid;
 		AssemblyMirror assembly;
 
-		internal ModuleMirror (VirtualMachine vm, long id) : base (vm, id)
+		internal ModuleMirror (VirtualMachine vm, long id)
 		{
+			this.vm = vm;
+			this.id = id;
 		}
+
+		public VirtualMachine VirtualMachine => vm;
+		public long Id => id;
 
 		void ReadInfo ()
 		{
@@ -19,28 +27,28 @@ namespace Mono.Debugger.Soft
 				info = vm.conn.Module_GetInfo (id);
 		}
 
-		public string Name {
+		public override string Name {
 			get {
 				ReadInfo ();
 				return info.Name;
 			}
 		}
 
-		public string ScopeName {
+		public override string ScopeName {
 			get {
 				ReadInfo ();
 				return info.ScopeName;
 			}
 		}
 
-		public string FullyQualifiedName {
+		public override string FullyQualifiedName {
 			get {
 				ReadInfo ();
 				return info.FQName;
 			}
 		}
 
-		public Guid ModuleVersionId {
+		public override Guid ModuleVersionId {
 			get {
 				if (guid == Guid.Empty) {
 					ReadInfo ();
@@ -50,7 +58,7 @@ namespace Mono.Debugger.Soft
 			}
 		}
 
-		public AssemblyMirror Assembly {
+		public override System.Reflection.Assembly Assembly {
 			get {
 				if (assembly == null) {
 					ReadInfo ();

@@ -21,19 +21,15 @@ namespace Mono.Debugger.Soft
 			}
 		}
 
-		internal long Id {
+		public long Id {
 			get {
 				return id;
 			}
 		}
+	}
 
-		protected void SetVirtualMachine (VirtualMachine vm) {
-			this.vm = vm;
-		}
-
-		protected void CheckMirror (Mirror m) {
-			if (vm != m.VirtualMachine)
-				throw new VMMismatchException ();
-		}
+	public static class MirrorExtensions {
+		public static void AssertSameVm (this IMirror self, IMirror other)
+			=> self.VirtualMachine?.AssertSameVm (other);
 	}
 }

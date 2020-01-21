@@ -31,7 +31,7 @@ namespace Mono.Debugger.Soft
 
 		public Value this [String field] {
 			get {
-				FieldInfoMirror[] field_info = Type.GetFields ();
+				var field_info = (FieldInfoMirror[])Type.GetFields ();
 				int nf = 0;
 				for (int i = 0; i < field_info.Length; ++i) {
 					if (!field_info [i].IsStatic) {
@@ -43,7 +43,7 @@ namespace Mono.Debugger.Soft
 				throw new ArgumentException ("Unknown struct field '" + field + "'.", "field");
 			}
 			set {
-				FieldInfoMirror[] field_info = Type.GetFields ();
+				var field_info = (FieldInfoMirror[])Type.GetFields ();
 				int nf = 0;
 				for (int i = 0; i < field_info.Length; ++i) {
 					if (!field_info [i].IsStatic) {

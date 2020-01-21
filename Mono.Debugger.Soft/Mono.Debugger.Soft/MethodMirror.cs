@@ -8,8 +8,11 @@ using Mono.Cecil.Metadata;
 
 namespace Mono.Debugger.Soft
 {
-	public class MethodMirror : Mirror
+	public class MethodMirror : IMethodBaseMirror
 	{
+		VirtualMachine vm;
+		long id;
+
 		string name;
 		MethodInfo info;
 		TypeMirror declaring_type;
@@ -25,7 +28,13 @@ namespace Mono.Debugger.Soft
 		MethodMirror gmd;
 		TypeMirror[] type_args;
 
-		internal MethodMirror (VirtualMachine vm, long id) : base (vm, id) {
+		public VirtualMachine VirtualMachine => vm;
+		public long Id => id;
+
+		internal MethodMirror (VirtualMachine vm, long id)
+		{
+			this.vm = vm;
+			this.id = id;
 		}
 
 		public string Name {
@@ -44,9 +53,12 @@ namespace Mono.Debugger.Soft
 			}
 		}
 
+		public TypeMirror ReflectedType
+			=> throw new NotImplementedException ();
+
 		public TypeMirror ReturnType {
 			get {
-				return ReturnParameter.ParameterType;
+				return (TypeMirror) ReturnParameter.ParameterType;
 			}
 		}
 
@@ -111,7 +123,7 @@ namespace Mono.Debugger.Soft
 		MethodInfo GetInfo () {
 			if (info == null)
 				info = vm.conn.Method_GetInfo (id);
-			
+
 			return info;
 		}
 
@@ -127,7 +139,7 @@ namespace Mono.Debugger.Soft
 			}
 		}
 
-		public bool IsPublic { 
+		public bool IsPublic {
 			get {
 				return (Attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Public;
 			}
@@ -212,6 +224,18 @@ namespace Mono.Debugger.Soft
 			}
 		}
 
+		public override bool Equals(object obj) {
+			return obj is MethodMirror other
+				? vm == other.vm && id == other.id
+				: false;
+		}
+
+		public override int GetHashCode () {
+			unchecked {
+				return ((17 * 31) + vm.GetHashCode ()) * 31 + id.GetHashCode ();
+			}
+		}
+
 		public MethodImplAttributes GetMethodImplementationFlags() {
 			return (MethodImplAttributes)GetInfo ().iattributes;
 		}
@@ -261,7 +285,7 @@ namespace Mono.Debugger.Soft
 				locals = new LocalVariable [pi.Length + li.names.Length];
 
 				for (int i = 0; i < pi.Length; ++i)
-					locals [i] = new LocalVariable (vm, this, i, pi[i].ParameterType.Id, pi[i].Name, -1, -1, true);
+					locals [i] = new LocalVariable (vm, this, i, ((TypeMirror) pi[i].ParameterType).Id, pi[i].Name, -1, -1, true);
 
 				for (int i = 0; i < li.names.Length; ++i)
 					locals [i + pi.Length] = new LocalVariable (vm, this, i, li.types [i], li.names [i], li.live_range_start [i], li.live_range_end [i], false);
@@ -380,7 +404,7 @@ namespace Mono.Debugger.Soft
 				}
 				return locations;
 			}
-		}				
+		}
 
 		internal int il_offset_to_line_number (int il_offset, out string src_file, out byte[] src_hash, out int column_number, out int end_line_number, out int end_column_number) {
 			if (debug_info == null)
@@ -420,7 +444,7 @@ namespace Mono.Debugger.Soft
 		public C.MethodDefinition Metadata {
 			get {
 				if (meta == null)
-					meta = (C.MethodDefinition)DeclaringType.Assembly.Metadata.MainModule.LookupToken (MetadataToken);
+					meta = (C.MethodDefinition)((AssemblyMirror)DeclaringType.Assembly).Metadata.MainModule.LookupToken (MetadataToken);
 				return meta;
 			}
 		}

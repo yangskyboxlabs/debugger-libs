@@ -80,7 +80,7 @@ namespace Mono.Debugger.Soft
 			foreach (FieldInfoMirror f in fields) {
 				if (f == null)
 					throw new ArgumentNullException ("field");
-				CheckMirror (f);
+				this.AssertSameVm (f);
 			}
 			long[] ids = new long [fields.Count];
 			for (int i = 0; i < fields.Count; ++i)
@@ -105,12 +105,12 @@ namespace Mono.Debugger.Soft
 			foreach (FieldInfoMirror f in fields) {
 				if (f == null)
 					throw new ArgumentNullException ("field");
-				CheckMirror (f);
+				this.AssertSameVm (f);
 			}
 			foreach (Value v in values) {
 				if (v == null)
 					throw new ArgumentNullException ("values");
-				CheckMirror (v);
+				this.AssertSameVm (v);
 			}
 			long[] ids = new long [fields.Count];
 			for (int i = 0; i < fields.Count; ++i)
@@ -273,7 +273,7 @@ namespace Mono.Debugger.Soft
 			public bool IsMultiple {
 				get; set;
 			}
-			   
+
 			public int NumPending;
 
 			public void Abort ()

@@ -10,12 +10,18 @@ using System.Reflection;
 
 namespace Mono.Debugger.Soft
 {
-	public class MethodBodyMirror : Mirror
+	public class MethodBodyMirror : System.Reflection.MethodBody, IMirror
 	{
+		VirtualMachine vm;
+
 		MethodMirror method;
 		MethodBodyInfo info;
 
-		internal MethodBodyMirror (VirtualMachine vm, MethodMirror method, MethodBodyInfo info) : base (vm, 0) {
+		public VirtualMachine VirtualMachine => vm;
+
+		internal MethodBodyMirror (VirtualMachine vm, MethodMirror method, MethodBodyInfo info)
+		{
+			this.vm = vm;
 			this.method = method;
 			this.info = info;
 		}
@@ -42,7 +48,7 @@ namespace Mono.Debugger.Soft
 			}
 		}
 
-		public byte[] GetILAsByteArray () {
+		public override byte[] GetILAsByteArray () {
 			return info.il;
 		}
 

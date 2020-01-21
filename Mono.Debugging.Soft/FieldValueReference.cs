@@ -187,7 +187,7 @@ namespace Mono.Debugging.Soft
 
 		internal string [] GetTupleElementNames ()
 		{
-			return GetTupleElementNames (field.GetCustomAttributes (true));
+			return GetTupleElementNames ((CustomAttributeDataMirror[])field.GetCustomAttributes (true));
 		}
 
 		internal static string [] GetTupleElementNames (CustomAttributeDataMirror [] attrs)

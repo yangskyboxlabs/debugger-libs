@@ -171,7 +171,7 @@ namespace Mono.Debugger.Soft
 		}
 
 		public Value GetArgument (int pos) {
-			return GetValue (Method.GetParameters () [pos]);
+			return GetValue (((ParameterInfoMirror[])Method.GetParameters ()) [pos]);
 		}
 
 		public Value GetThis () {
@@ -194,7 +194,7 @@ namespace Mono.Debugger.Soft
 				throw new ArgumentException ("Local variable doesn't belong to this frame's method.");
 			if (value == null)
 				throw new ArgumentNullException ("value");
-			CheckMirror (value);
+			this.AssertSameVm (value);
 			// FIXME: Liveness
 			// FIXME: Check for return value
 			try {
@@ -216,7 +216,7 @@ namespace Mono.Debugger.Soft
 				throw new ArgumentException ("Parameter represents the method return value.");
 			if (value == null)
 				throw new ArgumentNullException ("value");
-			CheckMirror (value);
+			this.AssertSameVm (value);
 
 			// FIXME: Liveness
 			// FIXME: Allow setting the frame return value if possible
