@@ -3066,7 +3066,25 @@ namespace Mono.Debugging.Soft
 			int rangeLastLine = -1;
 			Location target = null;
 
-			foreach (var location in method.Locations) {
+			IEnumerable<Location> locations = method.Locations;
+
+			// If this method has no associated IL, see if we should be looking for an auto-generated type
+			// i.e. iterator method
+			if (method.ILOffsets?.Count == 0) {
+				// TODO: Verify that it is correct to assume only a single nested type
+				var generatorType = method.DeclaringType.GetNestedTypes(BindingFlags.NonPublic)
+					.Where(nested => nested.Name.StartsWith($"<{method.Name}>"))
+					.FirstOrDefault();
+
+				if (generatorType != null) {
+					locations = Enumerable.Empty<Location>();
+					foreach (MethodMirror m in generatorType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)) {
+						locations = locations.Concat(m.Locations);
+					}
+				}
+			}
+
+			foreach (var location in locations) {
 				string srcFile = location.SourceFile;
 
 				//Console.WriteLine ("\tExamining {0}:{1}...", srcFile, location.LineNumber);
