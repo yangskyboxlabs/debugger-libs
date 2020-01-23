@@ -87,8 +87,11 @@ namespace Mono.Debugger.Soft
 
 		public string Name {
 			get {
-				if (name == null)
+				if (name == null) {
 					name = vm.conn.Thread_GetName (id);
+					if (string.IsNullOrEmpty (name))
+						name = "<unnamed thread>";
+				}
 				return name;
 			}
 		}
