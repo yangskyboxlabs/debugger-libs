@@ -726,14 +726,20 @@ namespace Mono.Debugging.Soft
 
 		public override bool NullableHasValue (EvaluationContext ctx, object type, object obj)
 		{
-			var hasValue = GetMember (ctx, type, obj, "hasValue") ?? GetMember (ctx, type, obj, "has_value");
+			// XXX: Backing field for HasValue is at index 1. Unsure why using reflection fails.
+			var mirror = (StructMirror)obj;
+			return (bool) ((PrimitiveValue)mirror.Fields[1]).Value;
 
-			return (bool) hasValue.ObjectValue;
+			//var hasValue = GetMember (ctx, type, obj, "hasValue") ?? GetMember (ctx, type, obj, "has_value");
+			//return (bool) hasValue.ObjectValue;
 		}
 
 		public override ValueReference NullableGetValue (EvaluationContext ctx, object type, object obj)
 		{
-			return GetMember (ctx, type, obj, "value");
+			// XXX: Backing field for Value is at index 0. Unsure why using reflection fails.
+			var mirror = (StructMirror)obj;
+			return LiteralValueReference.CreateObjectLiteral (ctx, "Value", mirror.Fields[0]);
+			//return GetMember (ctx, type, obj, "value");
 		}
 
 		public override object GetEnclosingType (EvaluationContext ctx)
